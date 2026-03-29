@@ -155,6 +155,5 @@ import os
 
 if __name__ == "__main__":
     print("\n🚀 سيرفر مطعم البركة جاهز للعمل السحابي!")
-    # السيرفر السحابي سيقرأ البورت من البيئة، وإذا كان محلياً سيستخدم 5000
-    port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port)
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host="0.0.0.0", port=port)
