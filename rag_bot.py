@@ -111,6 +111,7 @@ def whatsapp_reply():
     latitude = request.values.get('Latitude')
     longitude = request.values.get('Longitude')
     
+    # 🎯 معالجة الموقع الجغرافي (إذا أرسل الزبون دبوس الموقع)
     if latitude and longitude:
         print(f"\n📍 استلام موقع من {sender_number}: {latitude}, {longitude}")
         distance, fee = calculate_delivery_fee(latitude, longitude)
@@ -125,10 +126,22 @@ def whatsapp_reply():
     else:
         print(f"\n👤 رسالة من {sender_number}: {incoming_msg}")
     
-    response_text = conversational_rag_chain.invoke(
-        {"question": incoming_msg},
-        config={"configurable": {"session_id": sender_number}} 
-    )
+    # 🛡️ درع الحماية: محاولة الاتصال بالعقل المدبر مع تجنب الانهيار
+    try:
+        response_text = conversational_rag_chain.invoke(
+            {"question": incoming_msg},
+            config={"configurable": {"session_id": sender_number}} 
+        )
+    except Exception as e:
+        error_msg = str(e)
+        if "429" in error_msg or "RESOURCE_EXHAUSTED" in error_msg:
+            # رد لبق إذا تجاوزنا الحد الأقصى للطلبات في الدقيقة (الخطة المجانية)
+            response_text = "يا هلا فيك.. في ضغط طلبات كبير حالياً، ممكن تعيد رسالتك بعد دقيقة؟ تكرم عينك!"
+            print(f"⚠️ تحذير: تم تجاوز حد Gemini API. ننتظر دقيقة.")
+        else:
+            # رد لأي مشكلة تقنية أخرى
+            response_text = "يا هلا، صار في خلل فني بسيط بالنظام. ثواني وبنكون معك!"
+            print(f"❌ خطأ غير متوقع: {error_msg}")
     
     print(f"🤖 رد النادل: {response_text}")
     
