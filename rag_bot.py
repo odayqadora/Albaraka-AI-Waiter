@@ -1,11 +1,8 @@
-import os  # 👈 أضفناها هنا في القمة
+import os
 import math
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
-from langchain_community.document_loaders import TextLoader
-from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-from langchain_community.vectorstores import FAISS
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -15,22 +12,10 @@ from langchain_core.runnables.history import RunnableWithMessageHistory
 # تحويل الكود إلى خادم ويب
 app = Flask(__name__)
 
-# 1. قراءة المنيو وبناء قاعدة البيانات
+# 1. قراءة المنيو (الاعتماد على الذاكرة الكاملة لـ Gemini بدلاً من قواعد البيانات المعقدة)
 print("📚 جاري قراءة منيو مطعم البركة...")
-loader = TextLoader("data/menu.txt", encoding="utf-8")
-docs = loader.load()
-
-text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
-final_documents = text_splitter.split_documents(docs)
-
-print("🧠 جاري بناء قاعدة البيانات...")
-# استخدمنا سيرفرات جوجل بدلاً من ذاكرة حاسوبنا الضعيفة
-embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/text-embedding-004", 
-    google_api_key=os.environ.get("GEMINI_API_KEY")
-)
-vectorstore = FAISS.from_documents(final_documents, embeddings)
-retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
+with open("data/menu.txt", "r", encoding="utf-8") as f:
+    menu_content = f.read()
 
 # 2. العقل المدبر (Gemini)
 print("⚡ جاري الاتصال بمحرك Gemini...")
@@ -40,17 +25,14 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.2
 )
 
-def format_docs(docs):
-    return "\n\n".join(doc.page_content for doc in docs)
-
-# 3. البرومبت المحدث (متعدد اللغات ولهجة عربية بيضاء ويحتوي على الذاكرة وضبط اللهجة الصارم)
+# 3. البرومبت المحدث (متعدد اللغات ولهجة عربية بيضاء)
 prompt = ChatPromptTemplate.from_messages([
     ("system", """أنت نادل محترف وراقي في "مطعم البركة" للمأكولات الفلسطينية.
 تعليمات هامة وصارمة جداً:
 1. استخرج الإجابة والأسعار حصراً من قائمة الطعام المرفقة.
 2. قدم إجابات قصيرة ومباشرة. اذكر 3 أو 4 خيارات مميزة فقط مع أسعارها إذا سألك عن قسم كامل.
 3. اللغات واللهجة (قاعدة ذهبية): أجب الزبون بنفس اللغة التي يتحدث بها:
-   - إذا تحدث بالعربية: أجب بلهجة عربية "بيضاء" (مفهومة ولبقة لجميع الجنسيات العربية). كن ودوداً ومضيافاً، وتجنب الكلمات المحلية المعقدة أو المبالغة في الترحيب.
+   - إذا تحدث بالعربية: أجب بلهجة عربية "بيضاء" (مفهومة ولبقة لجميع الجنسيات العربية). كن ودوداً ومضيافاً.
    - إذا تحدث بالتركية: أجب بلغة تركية رسمية، صحيحة، ومهذبة جداً (Kibar ve profesyonel bir dil kullan).
    - إذا تحدث بالإنجليزية: أجب بلغة إنجليزية احترافية، دافئة، ولبقة (Polite, welcoming, and professional).
 4. تذكر طلبات الزبون السابقة في المحادثة لكي تستطيع حساب الإجمالي بدقة.
@@ -63,9 +45,9 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{question}")
 ])
 
-# 4. بناء السلسلة الذكية
+# 4. بناء السلسلة الذكية (حقن المنيو مباشرة)
 rag_chain = (
-    RunnablePassthrough.assign(context=(lambda x: format_docs(retriever.invoke(x["question"]))))
+    RunnablePassthrough.assign(context=lambda x: menu_content)
     | prompt
     | llm
     | StrOutputParser()
@@ -105,15 +87,14 @@ def calculate_delivery_fee(user_lat, user_lon):
     c = 2 * math.atan2(math.sqrt(a), math.sqrt(1 - a))
     distance = R * c # المسافة بالكيلومتر
     
-    # تحديد السعر بناءً على المسافة المقطوعة (يمكنكم تعديل التسعيرة لاحقاً حسب سياسة المطعم)
     if distance <= 3:
-        fee = 0 # توصيل مجاني للمناطق القريبة جداً
+        fee = 0
     elif distance <= 7:
         fee = 50
     elif distance <= 15:
         fee = 100
     else:
-        fee = -1 # خارج نطاق التوصيل التلقائي
+        fee = -1 
         
     return round(distance, 1), fee
 
@@ -126,7 +107,6 @@ def whatsapp_reply():
     latitude = request.values.get('Latitude')
     longitude = request.values.get('Longitude')
     
-    # 🎯 إذا أرسل الزبون "لوكيشن" من الواتساب
     if latitude and longitude:
         print(f"\n📍 استلام موقع من {sender_number}: {latitude}, {longitude}")
         distance, fee = calculate_delivery_fee(latitude, longitude)
@@ -141,7 +121,6 @@ def whatsapp_reply():
     else:
         print(f"\n👤 رسالة من {sender_number}: {incoming_msg}")
     
-    # تمرير الرسالة (أو رسالة النظام المخفية) للعقل المدبر
     response_text = conversational_rag_chain.invoke(
         {"question": incoming_msg},
         config={"configurable": {"session_id": sender_number}} 
