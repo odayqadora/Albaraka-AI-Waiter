@@ -1,16 +1,16 @@
+import os  # 👈 أضفناها هنا في القمة
+import math
 from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
-from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
-import math
 
 # تحويل الكود إلى خادم ويب
 app = Flask(__name__)
@@ -154,8 +154,6 @@ def whatsapp_reply():
     msg.body(response_text)
     
     return str(resp)
-
-import os
 
 if __name__ == "__main__":
     print("\n🚀 سيرفر مطعم البركة جاهز للعمل السحابي!")
