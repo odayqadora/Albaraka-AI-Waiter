@@ -2,7 +2,7 @@ from flask import Flask, request
 from twilio.twiml.messaging_response import MessagingResponse
 from langchain_community.document_loaders import TextLoader
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 from langchain_community.vectorstores import FAISS
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
@@ -24,7 +24,11 @@ text_splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
 final_documents = text_splitter.split_documents(docs)
 
 print("🧠 جاري بناء قاعدة البيانات...")
-embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+# استخدمنا سيرفرات جوجل بدلاً من ذاكرة حاسوبنا الضعيفة
+embeddings = GoogleGenerativeAIEmbeddings(
+    model="models/embedding-001", 
+    google_api_key=os.environ.get("GEMINI_API_KEY")
+)
 vectorstore = FAISS.from_documents(final_documents, embeddings)
 retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
 

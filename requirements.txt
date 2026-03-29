@@ -3,7 +3,5 @@ twilio
 langchain
 langchain-google-genai
 langchain-community
-langchain-huggingface
 faiss-cpu
-sentence-transformers
 gunicorn
