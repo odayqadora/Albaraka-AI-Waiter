@@ -32,7 +32,7 @@ retriever = vectorstore.as_retriever(search_kwargs={"k": 6})
 print("⚡ جاري الاتصال بمحرك Gemini...")
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash", 
-    google_api_key=os.environ.get("GEMINI_API_KEY")
+    google_api_key=os.environ.get("GEMINI_API_KEY"),
     temperature=0.2
 )
 
