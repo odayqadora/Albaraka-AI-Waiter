@@ -26,7 +26,7 @@ final_documents = text_splitter.split_documents(docs)
 print("🧠 جاري بناء قاعدة البيانات...")
 # استخدمنا سيرفرات جوجل بدلاً من ذاكرة حاسوبنا الضعيفة
 embeddings = GoogleGenerativeAIEmbeddings(
-    model="models/embedding-001", 
+    model="models/text-embedding-004", 
     google_api_key=os.environ.get("GEMINI_API_KEY")
 )
 vectorstore = FAISS.from_documents(final_documents, embeddings)
