@@ -13,7 +13,7 @@ def print_arabic(text):
 # 1. مسار الإيقاظ (لـ Cron-job)
 @app.route('/')
 def home():
-    return "Server is Awake and GPU is Ready!", 200
+    return "Al-Baraka Server is Active!", 200
 
 # 2. مسار الواتساب (الذي سنكمله غداً)
 @app.route('/whatsapp', methods=['POST'])
