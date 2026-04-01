@@ -18,16 +18,13 @@ CASHIER_PHONE = os.environ.get("CASHIER_PHONE")
 PRICE_PER_KM_TL = 40
 MAX_DELIVERY_KM = 50
 
-
 def _digits_only(phone: str) -> str:
     return re.sub(r"\D", "", phone or "")
-
 
 def is_cashier_sender(from_field: str) -> bool:
     if not CASHIER_PHONE:
         return False
     return _digits_only(from_field) == _digits_only(CASHIER_PHONE) and bool(_digits_only(CASHIER_PHONE))
-
 
 def get_twilio_client():
     sid = os.environ.get("TWILIO_ACCOUNT_SID")
@@ -36,17 +33,15 @@ def get_twilio_client():
         return None
     return Client(sid, token)
 
-
 def send_summary_to_cashier(summary_text: str) -> bool:
     client = get_twilio_client()
     from_wa = os.environ.get("TWILIO_WHATSAPP_FROM")
     if not client or not from_wa or not CASHIER_PHONE:
-        print("Missing TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_FROM, or CASHIER_PHONE")
+        print("Missing TWILIO credentials or CASHIER_PHONE")
         return False
     to_wa = CASHIER_PHONE if CASHIER_PHONE.strip().lower().startswith("whatsapp:") else f"whatsapp:{CASHIER_PHONE}"
     client.messages.create(body=summary_text, from_=from_wa, to=to_wa)
     return True
-
 
 print("📚 جاري قراءة منيو مطعم البركة...")
 with open("data/menu.txt", "r", encoding="utf-8") as f:
@@ -59,6 +54,7 @@ llm = ChatGoogleGenerativeAI(
     temperature=0.2,
 )
 
+# 💡 التعديل الأول: أضفنا "العنوان أو رابط الموقع" لتعليمات الملخص
 prompt = ChatPromptTemplate.from_messages(
     [
         (
@@ -66,13 +62,13 @@ prompt = ChatPromptTemplate.from_messages(
             """أنت نادل فلسطيني في مطعم "Al-Baraka" (البركة). مهمتك: كاشير مساعد للعرض الحي.
 قواعد صارمة:
 1) إيجاز شديد جداً — جمل قصيرة، بدون حشو.
-2) خذ الطلب واحسب المجموع: ثمن الأكل من قائمة الطعام فقط + تكلفة التوصيل (40 ليرة تركية لكل كم، حسب المسافة التي يذكرها النظام في رسائل التوصيل).
+2) خذ الطلب واحسب المجموع: ثمن الأكل من قائمة الطعام فقط + تكلفة التوصيل.
 3) إذا لم يُرسل الموقع بعد، اطلب دبوس الموقع لحساب التوصيل قبل الإغلاق.
 4) عند اكتمال الطلب وجاهزية الملخص، اكتب سطراً واحداً بالضبط يبدأ بـ:
 ثواني، ببعت طلبك للكاشير ليأكده
 5) مباشرة بعد ذلك، في نفس الرد، أضف سطراً يبدأ بالضبط بـ:
 [ORDER_SUMMARY]
-ثم ملخصاً قصيراً: الأصناف، الكميات، المجموع الغذائي، مسافة التوصيل إن وُجدت، رسوم التوصيل، والإجمالي النهائي.
+ثم ملخصاً قصيراً: الأصناف، الكميات، العنوان أو رابط الموقع المرفق، رسوم التوصيل، والإجمالي النهائي.
 6) اللغة: عربية فلسطينية محكية للزبائن العرب؛ إن كتب بلغة أخرى رد بلغته باختصار.
 
 قائمة الطعام:
@@ -92,12 +88,10 @@ rag_chain = (
 
 store = {}
 
-
 def get_session_history(session_id: str):
     if session_id not in store:
         store[session_id] = ChatMessageHistory()
     return store[session_id]
-
 
 conversational_rag_chain = RunnableWithMessageHistory(
     rag_chain,
@@ -105,7 +99,6 @@ conversational_rag_chain = RunnableWithMessageHistory(
     input_messages_key="question",
     history_messages_key="history",
 )
-
 
 def calculate_delivery_fee(user_lat, user_lon):
     restaurant_lat = float(os.environ.get("RESTAURANT_LAT", "41.235278"))
@@ -132,6 +125,10 @@ def calculate_delivery_fee(user_lat, user_lon):
 
     return round(distance, 2), fee
 
+# إضافة مسار الـ Home ليبقى السيرفر مستيقظاً (Cron-job)
+@app.route("/", methods=["GET"])
+def home():
+    return "Al-Baraka AI Server is LIVE! 🚀", 200
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_reply():
@@ -143,13 +140,15 @@ def whatsapp_reply():
 
     resp = MessagingResponse()
 
+    # إدارة الكاشير
     if is_cashier_sender(sender_number):
         if incoming_msg == "1":
-            resp.message().body("Order Confirmed")
+            resp.message().body("✅ تم تأكيد الطلب بنجاح!")
         else:
-            resp.message().body("Send 1 to confirm an order.")
+            resp.message().body("أهلاً بالكاشير. أرسل 1 لتأكيد الطلبات الواردة.")
         return str(resp)
 
+    # 💡 التعديل الثاني: تحويل الإحداثيات إلى رابط خرائط جوجل ليراه الكاشير
     if latitude and longitude:
         print(f"\n📍 استلام موقع من {sender_number}: {latitude}, {longitude}")
         distance, fee = calculate_delivery_fee(latitude, longitude)
@@ -160,8 +159,11 @@ def whatsapp_reply():
             )
         else:
             delivery_tl = fee
+            google_maps_link = f"https://maps.google.com/?q={latitude},{longitude}"
             incoming_msg = (
-                f"[رسالة نظام: موقع الزبون يبعد {distance} كم. التوصيل {PRICE_PER_KM_TL} ل.ت/كم — المجموع توصيل {delivery_tl} ل.ت. أضفها للفاتورة وأعطِ الإجمالي.]"
+                f"[رسالة نظام: أرسل الزبون دبوس الموقع. الرابط: {google_maps_link} "
+                f"المسافة {distance} كم. التوصيل {PRICE_PER_KM_TL} ل.ت/كم — المجموع توصيل {delivery_tl} ل.ت. "
+                f"أضف رابط الموقع وتكلفة التوصيل في ملخص الطلب النهائي.]"
             )
     else:
         print(f"\n👤 رسالة من {sender_number}: {incoming_msg}")
@@ -182,19 +184,32 @@ def whatsapp_reply():
 
     print(f"🤖 رد النادل: {response_text}")
 
+    # 💡 التعديل الثالث: دمج رقم الزبون برمجياً مع رسالة الكاشير
     if "[ORDER_SUMMARY]" in response_text:
         idx = response_text.find("[ORDER_SUMMARY]")
         summary_block = response_text[idx:].strip()
+        
+        # رسالة الكاشير النهائية المنسقة
+        final_cashier_msg = (
+            f"🔔 طلب جديد من الزبون!\n"
+            f"📱 رقم الواتساب: {sender_number.replace('whatsapp:', '')}\n"
+            f"----------------------\n"
+            f"{summary_block}\n"
+            f"----------------------\n"
+            f"أرسل 1 لتأكيد الطلب وبدء التحضير."
+        )
+
         try:
-            send_summary_to_cashier(summary_block)
+            send_summary_to_cashier(final_cashier_msg)
         except Exception as ex:
             print(f"Twilio forward failed: {ex}")
-        response_text = "تم تحويل طلبك للكاشير للمراجعة ⏳"
+            
+        # إخفاء الملخص عن الزبون وإخباره بالانتظار
+        response_text = "تم تحويل طلبك للكاشير للمراجعة، ثواني وبأكدلك إياه! ⏳"
 
     msg = resp.message()
     msg.body(response_text)
     return str(resp)
-
 
 if __name__ == "__main__":
     print("\n🚀 سيرفر مطعم البركة جاهز للعمل السحابي!")
