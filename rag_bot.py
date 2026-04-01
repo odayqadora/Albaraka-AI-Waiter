@@ -31,13 +31,13 @@ def is_cashier_sender(from_field: str) -> bool:
 
 def send_summary_to_cashier(summary_text: str):
     if not all([ACCOUNT_SID, AUTH_TOKEN, TWILIO_WHATSAPP_FROM, CASHIER_PHONE]):
-        print("❌ خطأ: بيانات Twilio أو رقم الكاشير ناقصة!")
+        print("❌ خطأ: بيانات Twilio أو رقم الكاشير ناقصة في إعدادات Render!")
         return False
     try:
         client = Client(ACCOUNT_SID, AUTH_TOKEN)
         to_wa = CASHIER_PHONE if CASHIER_PHONE.startswith("whatsapp:") else f"whatsapp:{CASHIER_PHONE}"
         client.messages.create(body=summary_text, from_=TWILIO_WHATSAPP_FROM, to=to_wa)
-        print(f"✅ تم إرسال الملخص للكاشير: {to_wa}")
+        print(f"✅ تم إرسال الملخص بنجاح للكاشير: {to_wa}")
         return True
     except Exception as e:
         print(f"❌ فشل إرسال الرسالة للكاشير: {e}")
@@ -46,30 +46,35 @@ def send_summary_to_cashier(summary_text: str):
 with open("data/menu.txt", "r", encoding="utf-8") as f:
     menu_content = f.read()
 
+# التبديل لموديل 1.5-flash لحل مشكلة توقف البوت عن الرد
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash", # تأكد من استخدام موديل متاح
+    model="gemini-1.5-flash", 
     google_api_key=os.environ.get("GEMINI_API_KEY"),
     temperature=0.1,
 )
 
+# تصحيح الجملة المقطوعة في البرومبت وتحسين ترتيب العرض
 prompt = ChatPromptTemplate.from_messages([
     ("system", """أنت مساعد كاشير فلسطيني ذكي في مطعم "البركة". 
 مهمتك جمع الطلب بدقة وحساب الفاتورة النهائية.
 يستطيع الزبون طلب الطعام او حجز مكان في المطعم.
 انت تتحدث العربية والانجليزية والتركية بلباقة وأدب.
 عندما يطلب الزبون وجبة اعرض عليه مقبلات مع الوجبة او مشروب او الاثنين معا حسب الوجبة التي يطلبها وتأكد انها في المنيو.
-اسأل الزبون لو لم يذ
+اسأل الزبون عن تفاصيل التوصيل (الموقع) أو الحجز (الوقت والأشخاص) إذا لم يذكرها.
+
 قواعد الحساب (إجبارية):
 1) احسب سعر الأكل من المنيو.
 2) أضف سعر التوصيل (40 ليرة لكل كيلومتر) للمجموع.
 3) يجب أن تذكر المجموع النهائي بوضوح (سعر الأكل + التوصيل = المجموع الكلي).
 
-عند الانتهاء تماماً، اسأله عن اسمه لتسجيل الطلبية على اسمه  ثم اعرض الطلب عليه قبل ارساله الى رقم الكاشير.
-عند الانتهاء تماماً، اتبع هذا التنسيق حرفياً:
+عند الانتهاء تماماً، اسأله عن اسمه لتسجيل الطلبية على اسمه ثم اعرض الطلب عليه للموافقة.
+بعد موافقته النهائية، اتبع هذا التنسيق حرفياً:
 ثواني، ببعت طلبك للكاشير ليأكده
 [ORDER_SUMMARY]
+الاسم: (اسم الزبون)
+النوع: (توصيل / حجز)
 الأصناف: (اذكرها مع أسعارها)
-الموقع: (ضع رابط الخرائط المرسل لك)
+الموقع: (ضع رابط الخرائط المرسل لك إن وجد)
 تكلفة التوصيل: (المسافة * 40)
 المجموع النهائي: (مجموع الأكل + التوصيل) ليرة تركية.
 
@@ -83,7 +88,11 @@ rag_chain = (RunnablePassthrough.assign(context=lambda x: menu_content) | prompt
 store = {}
 
 def get_session_history(session_id: str):
-    if session_id not in store: store[session_id] = ChatMessageHistory()
+    if session_id not in store: 
+        store[session_id] = ChatMessageHistory()
+    # تفريغ الذاكرة القديمة لتفادي خطأ امتلاء التوكنز
+    if len(store[session_id].messages) > 10:
+        store[session_id].clear()
     return store[session_id]
 
 conversational_rag_chain = RunnableWithMessageHistory(
@@ -133,10 +142,13 @@ def whatsapp_reply():
         response_text = "يا هلا.. صار ضغط بسيط ع النظام، ممكن تبعت رسالتك كمان مرة؟"
 
     if "[ORDER_SUMMARY]" in response_text:
-        summary_data = response_text.split("[ORDER_SUMMARY]")[1].strip()
-        final_summary = f"🔔 طلب/حجز جديد من {sender.replace('whatsapp:', '')}:\n{summary_data}"
-        send_summary_to_cashier(final_summary)
-        response_text = "تم تحويل طلبك للكاشير للمراجعة، ثواني وبأكدلك إياه! ⏳"
+        try:
+            summary_data = response_text.split("[ORDER_SUMMARY]")[1].strip()
+            final_summary = f"🔔 طلب/حجز جديد من {sender.replace('whatsapp:', '')}:\n{summary_data}"
+            send_summary_to_cashier(final_summary)
+            response_text = "تم تحويل طلبك للكاشير للمراجعة، ثواني وبأكدلك إياه! ⏳"
+        except IndexError:
+            pass
 
     resp.message().body(response_text)
     return str(resp)
