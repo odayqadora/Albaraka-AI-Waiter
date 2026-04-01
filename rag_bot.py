@@ -31,13 +31,13 @@ def is_cashier_sender(from_field: str) -> bool:
 
 def send_summary_to_cashier(summary_text: str):
     if not all([ACCOUNT_SID, AUTH_TOKEN, TWILIO_WHATSAPP_FROM, CASHIER_PHONE]):
-        print("❌ خطأ: بيانات Twilio أو رقم الكاشير ناقصة في إعدادات Render!")
+        print("❌ خطأ: بيانات Twilio أو رقم الكاشير ناقصة!")
         return False
     try:
         client = Client(ACCOUNT_SID, AUTH_TOKEN)
         to_wa = CASHIER_PHONE if CASHIER_PHONE.startswith("whatsapp:") else f"whatsapp:{CASHIER_PHONE}"
         client.messages.create(body=summary_text, from_=TWILIO_WHATSAPP_FROM, to=to_wa)
-        print(f"✅ تم إرسال الملخص بنجاح للكاشير: {to_wa}")
+        print(f"✅ تم إرسال الملخص للكاشير: {to_wa}")
         return True
     except Exception as e:
         print(f"❌ فشل إرسال الرسالة للكاشير: {e}")
@@ -91,7 +91,7 @@ conversational_rag_chain = RunnableWithMessageHistory(
 )
 
 def calculate_delivery_fee(user_lat, user_lon):
-    r_lat, r_lon = 41.235278, 28.774333 # إحداثيات المطعم
+    r_lat, r_lon = 41.235278, 28.774333
     R = 6371.0
     lat1, lon1, lat2, lon2 = map(math.radians, [r_lat, r_lon, float(user_lat), float(user_lon)])
     dlon, dlat = lon2 - lon1, lat2 - lat1
@@ -101,7 +101,7 @@ def calculate_delivery_fee(user_lat, user_lon):
     return round(distance, 2), round(distance * PRICE_PER_KM_TL, 2)
 
 @app.route("/", methods=["GET"])
-def home(): return "Server is running!", 200
+def home(): return "Al-Baraka AI is online!", 200
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_reply():
@@ -111,21 +111,31 @@ def whatsapp_reply():
     resp = MessagingResponse()
 
     if is_cashier_sender(sender):
-        if body == "1": resp.message().body("✅ تم تأكيد الطلب!")
-        else: resp.message().body("أهلاً كاشير. أرسل 1 لتأكيد آخر طلب.")
+        if body == "1": resp.message().body("✅ تم تأكيد الطلب بنجاح!")
+        else: resp.message().body("أهلاً كاشير عدي. أرسل 1 لتأكيد الطلب.")
         return str(resp)
 
     if lat and lon:
         dist, fee = calculate_delivery_fee(lat, lon)
         google_link = f"https://www.google.com/maps?q={lat},{lon}"
-        if fee == -1: body = f"[نظام: المسافة {dist}كم - خارج النطاق]"
-        else: body = f"[نظام: الموقع {google_link} | المسافة {dist}كم | التوصيل {fee} ليرة. احسب المجموع النهائي الآن وأنهِ الطلب]"
+        if fee == -1: 
+            body = f"[نظام: المسافة {dist}كم - خارج نطاق التوصيل. اعتذر منه]"
+        else: 
+            body = f"[نظام: الموقع {google_link} | المسافة {dist}كم | التوصيل {fee} ليرة. احسب المجموع الآن واعرضه على الزبون مع طلب اسمه]"
 
-    response_text = conversational_rag_chain.invoke({"question": body}, config={"configurable": {"session_id": sender}})
+    try:
+        response_text = conversational_rag_chain.invoke(
+            {"question": body}, 
+            config={"configurable": {"session_id": sender}}
+        )
+    except Exception as e:
+        print(f"❌ Error: {e}")
+        response_text = "يا هلا.. صار ضغط بسيط ع النظام، ممكن تبعت رسالتك كمان مرة؟"
 
     if "[ORDER_SUMMARY]" in response_text:
-        summary = f"🔔 طلب جديد من {sender.replace('whatsapp:', '')}:\n{response_text.split('[ORDER_SUMMARY]')[1]}"
-        send_summary_to_cashier(summary)
+        summary_data = response_text.split("[ORDER_SUMMARY]")[1].strip()
+        final_summary = f"🔔 طلب/حجز جديد من {sender.replace('whatsapp:', '')}:\n{summary_data}"
+        send_summary_to_cashier(final_summary)
         response_text = "تم تحويل طلبك للكاشير للمراجعة، ثواني وبأكدلك إياه! ⏳"
 
     resp.message().body(response_text)
