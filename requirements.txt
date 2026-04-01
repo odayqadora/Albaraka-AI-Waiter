@@ -1,5 +1,5 @@
 Flask
 twilio
 langchain
-langchain-google-genai
 langchain-community
+langchain-groq==0.1.3

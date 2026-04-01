@@ -4,7 +4,8 @@ import re
 from flask import Flask, request
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
-from langchain_google_genai import ChatGoogleGenerativeAI
+# 💡 تم تغيير الاستيراد هنا إلى Groq
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -46,10 +47,10 @@ def send_summary_to_cashier(summary_text: str):
 with open("data/menu.txt", "r", encoding="utf-8") as f:
     menu_content = f.read()
 
-# التبديل لموديل 1.5-flash لحل مشكلة توقف البوت عن الرد
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash", 
-    google_api_key=os.environ.get("GEMINI_API_KEY"),
+# 💡 التبديل إلى موديل Llama 3 عبر Groq (سريع جداً ومجاني)
+llm = ChatGroq(
+    groq_api_key=os.environ.get("GROQ_API_KEY"),
+    model_name="llama3-70b-8192", 
     temperature=0.1,
 )
 
@@ -90,9 +91,9 @@ store = {}
 def get_session_history(session_id: str):
     if session_id not in store: 
         store[session_id] = ChatMessageHistory()
-    # تفريغ الذاكرة القديمة لتفادي خطأ امتلاء التوكنز
-    if len(store[session_id].messages) > 10:
-        store[session_id].clear()
+    # 💡 تم تقليل الذاكرة لآخر 6 رسائل لضمان السرعة القصوى وعدم نسيان الطلب
+    if len(store[session_id].messages) > 6:
+        store[session_id].messages = store[session_id].messages[-6:]
     return store[session_id]
 
 conversational_rag_chain = RunnableWithMessageHistory(
@@ -110,7 +111,7 @@ def calculate_delivery_fee(user_lat, user_lon):
     return round(distance, 2), round(distance * PRICE_PER_KM_TL, 2)
 
 @app.route("/", methods=["GET"])
-def home(): return "Al-Baraka AI is online!", 200
+def home(): return "Al-Baraka AI is online with Groq!", 200
 
 @app.route("/whatsapp", methods=["POST"])
 def whatsapp_reply():
