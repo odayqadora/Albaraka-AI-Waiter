@@ -47,10 +47,10 @@ def send_summary_to_cashier(summary_text: str):
 with open("data/menu.txt", "r", encoding="utf-8") as f:
     menu_content = f.read()
 
-# 💡 التبديل إلى موديل Llama 3 عبر Groq (سريع جداً ومجاني)
+# التبديل إلى موديل Llama 3.3 الأحدث والمدعوم حالياً من Groq
 llm = ChatGroq(
     groq_api_key=os.environ.get("GROQ_API_KEY"),
-    model_name="llama3-70b-8192", 
+    model_name="llama-3.3-70b-versatile", # 💡 هذا هو الاسم الجديد الصحيح
     temperature=0.1,
 )
 
