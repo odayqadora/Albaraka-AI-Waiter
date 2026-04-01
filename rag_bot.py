@@ -47,8 +47,9 @@ with open("data/menu.txt", "r", encoding="utf-8") as f:
     menu_content = f.read()
 
 # التبديل لموديل 1.5-flash لحل مشكلة توقف البوت عن الرد
+# التعديل هنا: إضافة -latest لاسم الموديل
 llm = ChatGoogleGenerativeAI(
-    model="gemini-1.5-flash", 
+    model="gemini-1.5-flash-latest", 
     google_api_key=os.environ.get("GEMINI_API_KEY"),
     temperature=0.1,
 )
