@@ -53,9 +53,9 @@ menu_path = os.path.join(BASE_DIR, "data", "menu.txt")
 with open(menu_path, "r", encoding="utf-8") as f:
     menu_content = f.read()
 
-# تهيئة Gemini 1.5 Flash
+# تهيئة Gemini 2.5 Flash
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-preview-04-17",
+    model="gemini-2.5-flash",
     temperature=0.3, # حرارة منخفضة لضمان الدقة والالتزام بالمنيو واللباقة
 )
 
