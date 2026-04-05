@@ -55,7 +55,7 @@ with open(menu_path, "r", encoding="utf-8") as f:
 
 # تهيئة Gemini 1.5 Flash
 llm = ChatGoogleGenerativeAI(
-    model="gemini-2.0-flash",
+    model="model="gemini-2.5-flash-preview-04-17",",
     temperature=0.3, # حرارة منخفضة لضمان الدقة والالتزام بالمنيو واللباقة
 )
 
