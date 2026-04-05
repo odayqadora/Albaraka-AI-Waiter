@@ -27,8 +27,8 @@ PRICE_PER_KM_TL = 40
 MAX_DELIVERY_KM = 50
 
 # مخزن الحالات (يفضل Redis للإنتاج لاحقاً)
-order_states = {} 
-last_customer_mapping = {} # لربط الكاشير بآخر زبون أرسل طلباً
+order_states = {}
+last_customer_mapping = {}  # لربط الكاشير بآخر زبون أرسل طلباً
 
 def _digits_only(phone: str) -> str:
     return re.sub(r"\D", "", phone or "")
@@ -56,17 +56,19 @@ with open(menu_path, "r", encoding="utf-8") as f:
 # تهيئة Gemini 2.5 Flash
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
-    temperature=0.3, # حرارة منخفضة لضمان الدقة والالتزام بالمنيو واللباقة
+    temperature=0.3,
 )
 
 prompt = ChatPromptTemplate.from_messages([
-    ("system", """أنت المساعد الذكي لـ "مطعم البركة". مهمتك استقبال الزبائن، تقديم قائمة الطعام، وأخذ الطلبات باحترافية عالية. تحدث دائماً بصيغة الجمع "نحن".
+    ("system", """أنت المساعد الذكي لـ "مطعم البركة". مهمتك استقبال الزبائن، تقديم قائمة الطعام، وأخذ الطلبات باحترافية عالية.
+رقم واتساب الزبون الحالي هو: {sender} — لا تسأله عن رقمه أبداً، هو مسجل تلقائياً في النظام.
+تحدث دائماً بصيغة الجمع "نحن".
 
 قواعد الحوار:
-1. اللغات: أجب بلغة الزبون (فلسطيني، تركي، إنجليزي).
+1. اللغات: أجب بلغة عربية فلسطينية اللهجة ولا تستعمل العربية الفصحى اطلاقا (فلسطيني، تركي، إنجليزي).
 2. النبرة (للعربية): لهجة فلسطينية/شامية رسمية، مهذبة، ولبقة.
 3. مفردات إجبارية: استخدم (أهلاً وسهلاً فيك، تفضل، شرفتنا، بكل سرور، تكرم، جاهزين لخدمتك، لو سمحت).
-4. مفردات ممنوعة قطعيًا: الفصحى الجافة، والكلمات الشعبية المبالغ فيها مثل (يابا، على راسي، يا غالي، حبيب قلبي، معلم).
+4. مفردات ممنوعة قطعيًا: الفصحى الجافة، والكلمات الشعبية المبالغ فيها مثل (يابا، على راسي، حبيب قلبي، معلم).
 5. التدفق: اطلب الأصناف -> اطلب الموقع -> اطلب الاسم (أخيراً) -> اعرض الفاتورة.
 6. الفاتورة: يجب أن تشمل (الأصناف وأسعارها، سعر التوصيل، المجموع النهائي).
 7. التأكيد: اطلب من الزبون كتابة "تأكيد" لإرسال الطلب للكاشير.
@@ -74,7 +76,7 @@ prompt = ChatPromptTemplate.from_messages([
 عند موافقة الزبون، اتبع هذا التنسيق حرفياً في نهاية رسالتك:
 [FINAL_CONFIRMATION]
 الاسم: (اسم الزبون)
-الرقم: (رقم الزبون)
+الرقم: (مسجل تلقائياً من واتساب)
 النوع: (توصيل / حجز)
 الأصناف: (التفاصيل والأسعار)
 الموقع: (رابط الخرائط)
@@ -86,7 +88,17 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{question}"),
 ])
 
-rag_chain = (RunnablePassthrough.assign(context=lambda x: menu_content) | prompt | llm | StrOutputParser())
+# ✅ التعديل الرئيسي: rag_chain يمرر context و sender معاً للـ prompt
+rag_chain = (
+    RunnablePassthrough.assign(
+        context=lambda x: menu_content,
+        sender=lambda x: x.get("sender", "")
+    )
+    | prompt
+    | llm
+    | StrOutputParser()
+)
+
 store = {}
 
 def get_session_history(session_id: str):
@@ -98,7 +110,7 @@ conversational_rag_chain = RunnableWithMessageHistory(
 )
 
 def calculate_delivery_fee(user_lat, user_lon):
-    r_lat, r_lon = 41.235278, 28.774333 # إحداثيات مطعم البركة
+    r_lat, r_lon = 41.235278, 28.774333  # إحداثيات مطعم البركة
     R = 6371.0
     lat1, lon1, lat2, lon2 = map(math.radians, [r_lat, r_lon, float(user_lat), float(user_lon)])
     dlon, dlat = lon2 - lon1, lat2 - lat1
@@ -113,13 +125,15 @@ async def home():
 
 @app.post("/whatsapp")
 async def whatsapp_reply(request: Request):
-    # قراءة بيانات النموذج المرسلة من Twilio في FastAPI
     form_data = await request.form()
     body = form_data.get("Body", "").strip()
     sender = form_data.get("From", "")
     lat = form_data.get("Latitude")
     lon = form_data.get("Longitude")
-    
+
+    # رقم الزبون نظيف بدون "whatsapp:"
+    clean_sender = sender.replace("whatsapp:", "")
+
     resp = MessagingResponse()
 
     # --- 1. لوحة تحكم الكاشير ---
@@ -129,30 +143,30 @@ async def whatsapp_reply(request: Request):
             resp.message().body("لا توجد طلبات معلقة حالياً.")
             return Response(content=str(resp), media_type="application/xml")
 
-        if body == "1": # تأكيد
+        if body == "1":  # تأكيد
             send_whatsapp_msg(customer_id, "✅ تم تأكيد طلبكم من قبل المطعم.. جاري التحضير الآن! أهلاً وسهلاً فيك.")
             order_states[customer_id] = 'confirmed'
             last_customer_mapping.pop("current", None)
             resp.message().body("تم إرسال التأكيد للزبون.")
-        
-        elif body.startswith("2"): # رفض مع سبب
+
+        elif body.startswith("2"):  # رفض مع سبب
             reason = body[1:].strip() or "المطعم مزدحم حالياً"
             send_whatsapp_msg(customer_id, f"❌ نعتذر منكم، تم رفض الطلب.\nالسبب: {reason}")
             order_states[customer_id] = 'rejected'
             last_customer_mapping.pop("current", None)
             resp.message().body(f"تم إبلاغ الزبون بالرفض لسبب: {reason}")
 
-        elif body.startswith("3"): # رد مخصص
+        elif body.startswith("3"):  # رد مخصص
             custom_msg = body[1:].strip()
             if custom_msg:
                 send_whatsapp_msg(customer_id, f"💬 رسالة من إدارة المطعم:\n{custom_msg}")
                 resp.message().body("تم إرسال رسالتك للزبون.")
             else:
                 resp.message().body("يرجى كتابة الرسالة بعد الرقم 3 (مثال: 3 الطلب سيصل بعد 10 دقائق)")
-        
+
         else:
             resp.message().body("خيارات الكاشير:\n1. تأكيد\n2. رفض (اكتب 2 والسبب)\n3. رد (اكتب 3 والرسالة)")
-            
+
         return Response(content=str(resp), media_type="application/xml")
 
     # --- 2. صمت البوت للزبون المنتظر ---
@@ -164,15 +178,20 @@ async def whatsapp_reply(request: Request):
     if lat and lon:
         dist, fee = calculate_delivery_fee(lat, lon)
         google_link = f"http://maps.google.com/?q={lat},{lon}"
-        if fee == -1: 
+        if fee == -1:
             body = f"[نظام: الموقع خارج التغطية {dist}كم]"
-        else: 
+        else:
             body = f"[نظام: الموقع {google_link} | المسافة {dist}كم | التوصيل {fee} ليرة. اطلب اسم الزبون الآن]"
 
     # --- 4. استدعاء الذكاء الاصطناعي ---
     try:
+        # ✅ التعديل: إرسال sender مع question
         response_text = conversational_rag_chain.invoke(
-            {"question": body}, config={"configurable": {"session_id": sender}}
+            {
+                "question": body,
+                "sender": clean_sender
+            },
+            config={"configurable": {"session_id": sender}}
         )
     except Exception as e:
         print(f"LLM Error: {e}")
@@ -181,17 +200,19 @@ async def whatsapp_reply(request: Request):
     # --- 5. كشف الفاتورة النهائية ---
     if "[FINAL_CONFIRMATION]" in response_text:
         summary = response_text.split("[FINAL_CONFIRMATION]")[1].strip()
+
+        # ✅ إضافة رقم الواتساب تلقائياً في رسالة الكاشير
+        summary = f"📱 رقم الواتساب: {clean_sender}\n" + summary
+
         last_customer_mapping["current"] = sender
         order_states[sender] = 'waiting_cashier'
-        
-        # إزالة الكتلة البرمجية المخفية من رسالة الزبون
+
         response_text = response_text.split("[FINAL_CONFIRMATION]")[0].strip()
         if not response_text:
             response_text = "تكرم! تم إرسال الطلب للإدارة للمراجعة.. ثواني وبنأكدلكم."
         else:
             response_text += "\n\nتكرم! تم إرسال الطلب للإدارة للمراجعة.. ثواني وبنأكدلكم."
 
-        # رسالة الكاشير (أزرار نصية)
         cashier_menu = (
             f"🔔 طلب جديد:\n{summary}\n\n"
             f"رد برقم الإجراء:\n"
@@ -202,14 +223,10 @@ async def whatsapp_reply(request: Request):
         send_whatsapp_msg(CASHIER_PHONE, cashier_menu)
 
     resp.message().body(response_text)
-    
-    # يجب إرجاع XML لكي يفهمه Twilio
     return Response(content=str(resp), media_type="application/xml")
 
 # للتشغيل المحلي:
 #   uvicorn rag_bot:app --host 0.0.0.0 --port 10000 --reload
-# أو: python rag_bot.py
 if __name__ == "__main__":
     import uvicorn
-
     uvicorn.run("rag_bot:app", host="0.0.0.0", port=10000, reload=True)
