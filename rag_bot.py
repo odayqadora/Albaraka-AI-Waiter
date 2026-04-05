@@ -48,7 +48,10 @@ def send_whatsapp_msg(to_phone, message):
         return False
 
 # قراءة المنيو
-with open("menu.txt", "r", encoding="utf-8") as f:
+import os
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+menu_path = os.path.join(BASE_DIR, "data", "menu.txt")
+with open(menu_path, "r", encoding="utf-8") as f:
     menu_content = f.read()
 
 # تهيئة Gemini 1.5 Flash

@@ -1,8 +1,10 @@
 fastapi
-uvicorn
+uvicorn[standard]
+python-multipart
 twilio
 langchain
 langchain-community
+langchain-core
 langchain-google-genai
-SpeechRecognition==3.10.0
-requests==2.31.0
+google-generativeai
+requests
