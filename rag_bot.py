@@ -1,17 +1,21 @@
 import os
 import math
 import re
-from flask import Flask, request
+from fastapi import FastAPI, Request, Response
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
-from langchain_groq import ChatGroq
+from langchain_google_genai import ChatGoogleGenerativeAI  # requires GOOGLE_API_KEY in env
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
-app = Flask(__name__)
+app = FastAPI(
+    title="مطعم البركة — واتساب",
+    description="Webhook Twilio + RAG (Gemini) للطلبات والتوصيل.",
+    version="1.0.0",
+)
 
 # الإعدادات
 CASHIER_PHONE = os.environ.get("CASHIER_PHONE")
@@ -22,7 +26,7 @@ AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 PRICE_PER_KM_TL = 40
 MAX_DELIVERY_KM = 50
 
-# مخزن الحالات (يفضل Redis للإنتاج)
+# مخزن الحالات (يفضل Redis للإنتاج لاحقاً)
 order_states = {} 
 last_customer_mapping = {} # لربط الكاشير بآخر زبون أرسل طلباً
 
@@ -43,25 +47,29 @@ def send_whatsapp_msg(to_phone, message):
         print(f"❌ Error: {e}")
         return False
 
-with open("data/menu.txt", "r", encoding="utf-8") as f:
+# قراءة المنيو
+with open("menu.txt", "r", encoding="utf-8") as f:
     menu_content = f.read()
 
-llm = ChatGroq(
-    groq_api_key=os.environ.get("GROQ_API_KEY"),
-    model_name="llama-3.3-70b-versatile",
-    temperature=0.1,
+# تهيئة Gemini 1.5 Flash
+llm = ChatGoogleGenerativeAI(
+    model="gemini-1.5-flash",
+    temperature=0.3, # حرارة منخفضة لضمان الدقة والالتزام بالمنيو واللباقة
 )
 
 prompt = ChatPromptTemplate.from_messages([
-    ("system", """أنت المساعد الذكي لـ "مطعم البركة". تحدث دائماً بصيغة الجمع "نحن".
+    ("system", """أنت المساعد الذكي لـ "مطعم البركة". مهمتك استقبال الزبائن، تقديم قائمة الطعام، وأخذ الطلبات باحترافية عالية. تحدث دائماً بصيغة الجمع "نحن".
 
 قواعد الحوار:
 1. اللغات: أجب بلغة الزبون (فلسطيني، تركي، إنجليزي).
-2. التدفق: اطلب الأصناف -> اطلب الموقع -> اطلب الاسم (أخيراً) -> اعرض الفاتورة.
-3. الفاتورة: يجب أن تشمل (الأصناف وأسعارها، اسم الطلبية، سعر التوصيل، المجموع النهائي).
-4. التأكيد: اطلب من الزبون كتابة "تأكيد" لإرسال الطلب.
+2. النبرة (للعربية): لهجة فلسطينية/شامية رسمية، مهذبة، ولبقة.
+3. مفردات إجبارية: استخدم (أهلاً وسهلاً فيك، تفضل، شرفتنا، بكل سرور، تكرم، جاهزين لخدمتك، لو سمحت).
+4. مفردات ممنوعة قطعيًا: الفصحى الجافة، والكلمات الشعبية المبالغ فيها مثل (يابا، على راسي، يا غالي، حبيب قلبي، معلم).
+5. التدفق: اطلب الأصناف -> اطلب الموقع -> اطلب الاسم (أخيراً) -> اعرض الفاتورة.
+6. الفاتورة: يجب أن تشمل (الأصناف وأسعارها، سعر التوصيل، المجموع النهائي).
+7. التأكيد: اطلب من الزبون كتابة "تأكيد" لإرسال الطلب للكاشير.
 
-عند موافقة الزبون، اتبع هذا التنسيق حرفياً:
+عند موافقة الزبون، اتبع هذا التنسيق حرفياً في نهاية رسالتك:
 [FINAL_CONFIRMATION]
 الاسم: (اسم الزبون)
 الرقم: (رقم الزبون)
@@ -88,7 +96,7 @@ conversational_rag_chain = RunnableWithMessageHistory(
 )
 
 def calculate_delivery_fee(user_lat, user_lon):
-    r_lat, r_lon = 41.235278, 28.774333
+    r_lat, r_lon = 41.235278, 28.774333 # إحداثيات مطعم البركة
     R = 6371.0
     lat1, lon1, lat2, lon2 = map(math.radians, [r_lat, r_lon, float(user_lat), float(user_lon)])
     dlon, dlat = lon2 - lon1, lat2 - lat1
@@ -97,14 +105,19 @@ def calculate_delivery_fee(user_lat, user_lon):
     if distance > MAX_DELIVERY_KM: return round(distance, 2), -1
     return round(distance, 2), round(distance * PRICE_PER_KM_TL, 2)
 
-@app.route("/", methods=["GET"])
-def home(): return "Al-Baraka Smart System Online", 200
+@app.get("/")
+async def home():
+    return {"status": "Al-Baraka Smart System Online (FastAPI)"}
 
-@app.route("/whatsapp", methods=["POST"])
-def whatsapp_reply():
-    body = request.values.get("Body", "").strip()
-    sender = request.values.get("From", "")
-    lat, lon = request.values.get("Latitude"), request.values.get("Longitude")
+@app.post("/whatsapp")
+async def whatsapp_reply(request: Request):
+    # قراءة بيانات النموذج المرسلة من Twilio في FastAPI
+    form_data = await request.form()
+    body = form_data.get("Body", "").strip()
+    sender = form_data.get("From", "")
+    lat = form_data.get("Latitude")
+    lon = form_data.get("Longitude")
+    
     resp = MessagingResponse()
 
     # --- 1. لوحة تحكم الكاشير ---
@@ -112,10 +125,10 @@ def whatsapp_reply():
         customer_id = last_customer_mapping.get("current")
         if not customer_id:
             resp.message().body("لا توجد طلبات معلقة حالياً.")
-            return str(resp)
+            return Response(content=str(resp), media_type="application/xml")
 
         if body == "1": # تأكيد
-            send_whatsapp_msg(customer_id, "✅ تم تأكيد طلبكم من قبل مطعم البركة.. جاري التحضير الآن! مية هلا.")
+            send_whatsapp_msg(customer_id, "✅ تم تأكيد طلبكم من قبل المطعم.. جاري التحضير الآن! أهلاً وسهلاً فيك.")
             order_states[customer_id] = 'confirmed'
             last_customer_mapping.pop("current", None)
             resp.message().body("تم إرسال التأكيد للزبون.")
@@ -137,19 +150,22 @@ def whatsapp_reply():
         
         else:
             resp.message().body("خيارات الكاشير:\n1. تأكيد\n2. رفض (اكتب 2 والسبب)\n3. رد (اكتب 3 والرسالة)")
-        return str(resp)
+            
+        return Response(content=str(resp), media_type="application/xml")
 
     # --- 2. صمت البوت للزبون المنتظر ---
     if order_states.get(sender) == 'waiting_cashier':
-        resp.message().body("طلبكم قيد المراجعة لدى الكاشير.. بنخبركم فور التأكيد! 🙏")
-        return str(resp)
+        resp.message().body("طلبكم قيد المراجعة لدى الإدارة.. بنخبركم فور التأكيد! بكل سرور.")
+        return Response(content=str(resp), media_type="application/xml")
 
     # --- 3. منطق الموقع ---
     if lat and lon:
         dist, fee = calculate_delivery_fee(lat, lon)
         google_link = f"http://maps.google.com/?q={lat},{lon}"
-        if fee == -1: body = f"[نظام: خارج التغطية {dist}كم]"
-        else: body = f"[نظام: الموقع {google_link} | المسافة {dist}كم | التوصيل {fee} ليرة. اطلب اسم الزبون الآن]"
+        if fee == -1: 
+            body = f"[نظام: الموقع خارج التغطية {dist}كم]"
+        else: 
+            body = f"[نظام: الموقع {google_link} | المسافة {dist}كم | التوصيل {fee} ليرة. اطلب اسم الزبون الآن]"
 
     # --- 4. استدعاء الذكاء الاصطناعي ---
     try:
@@ -157,7 +173,8 @@ def whatsapp_reply():
             {"question": body}, config={"configurable": {"session_id": sender}}
         )
     except Exception as e:
-        response_text = "مية هلا، صار ضغط بسيط، ممكن تعيد الطلب؟"
+        print(f"LLM Error: {e}")
+        response_text = "أهلاً وسهلاً فيك، نواجه ضغطاً بسيطاً في النظام، هل يمكنك إعادة إرسال الطلب لو سمحت؟"
 
     # --- 5. كشف الفاتورة النهائية ---
     if "[FINAL_CONFIRMATION]" in response_text:
@@ -165,6 +182,13 @@ def whatsapp_reply():
         last_customer_mapping["current"] = sender
         order_states[sender] = 'waiting_cashier'
         
+        # إزالة الكتلة البرمجية المخفية من رسالة الزبون
+        response_text = response_text.split("[FINAL_CONFIRMATION]")[0].strip()
+        if not response_text:
+            response_text = "تكرم! تم إرسال الطلب للإدارة للمراجعة.. ثواني وبنأكدلكم."
+        else:
+            response_text += "\n\nتكرم! تم إرسال الطلب للإدارة للمراجعة.. ثواني وبنأكدلكم."
+
         # رسالة الكاشير (أزرار نصية)
         cashier_menu = (
             f"🔔 طلب جديد:\n{summary}\n\n"
@@ -174,10 +198,16 @@ def whatsapp_reply():
             f"3️⃣ للرد على الزبون (مثال: 3 رح نتأخر)"
         )
         send_whatsapp_msg(CASHIER_PHONE, cashier_menu)
-        response_text = "يسلموا! تم إرسال الطلب للكاشير للمراجعة.. ثواني وبنأكدلكم. ⏳"
 
     resp.message().body(response_text)
-    return str(resp)
+    
+    # يجب إرجاع XML لكي يفهمه Twilio
+    return Response(content=str(resp), media_type="application/xml")
 
+# للتشغيل المحلي:
+#   uvicorn rag_bot:app --host 0.0.0.0 --port 10000 --reload
+# أو: python rag_bot.py
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=int(os.environ.get("PORT", 10000)))
+    import uvicorn
+
+    uvicorn.run("rag_bot:app", host="0.0.0.0", port=10000, reload=True)
