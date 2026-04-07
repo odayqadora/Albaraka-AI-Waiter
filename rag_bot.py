@@ -4,6 +4,7 @@ import re
 import time
 import random
 import asyncio
+import aiosqlite  # Import aiosqlite
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
@@ -13,6 +14,41 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
+
+# --- Database setup ---
+DB_FILE = "bot.db"
+
+async def db_execute(query, params=(), fetch=None):
+    """General purpose async function to execute DB queries."""
+    async with aiosqlite.connect(DB_FILE) as db:
+        cursor = await db.execute(query, params)
+        if fetch == 'one':
+            result = await cursor.fetchone()
+        elif fetch == 'all':
+            result = await cursor.fetchall()
+        else:
+            await db.commit()
+            result = None
+        return result
+
+# --- Async DB functions to replace dictionaries ---
+async def get_order_state(customer_id: str):
+    result = await db_execute("SELECT state FROM order_states WHERE customer_id = ?", (customer_id,), fetch='one')
+    return result[0] if result else None
+
+async def set_order_state(customer_id: str, state: str):
+    await db_execute("INSERT OR REPLACE INTO order_states (customer_id, state) VALUES (?, ?)", (customer_id, state))
+
+async def get_customer_mapping(key: str):
+    result = await db_execute("SELECT customer_id FROM customer_mapping WHERE key = ?", (key,), fetch='one')
+    return result[0] if result else None
+
+async def set_customer_mapping(key: str, customer_id: str):
+    await db_execute("INSERT OR REPLACE INTO customer_mapping (key, customer_id) VALUES (?, ?)", (key, customer_id))
+
+async def delete_customer_mapping(key: str):
+    await db_execute("DELETE FROM customer_mapping WHERE key = ?", (key,))
+
 
 app = FastAPI(
     title="مطعم البركة — واتساب",
@@ -29,8 +65,9 @@ AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 PRICE_PER_KM_TL = 40
 MAX_DELIVERY_KM = 50
 
-order_states = {}
-last_customer_mapping = {}
+# The dictionaries are now replaced by the async DB functions
+# order_states = {}
+# last_customer_mapping = {}
 
 def _digits_only(phone: str) -> str:
     return re.sub(r"\D", "", phone or "")
@@ -181,22 +218,22 @@ async def whatsapp_reply(request: Request, background_tasks: BackgroundTasks):
 
     # --- 1. لوحة تحكم الكاشير ---
     if is_cashier_sender(sender):
-        customer_id = last_customer_mapping.get("current")
+        customer_id = await get_customer_mapping("current")
         if not customer_id:
             resp.message().body("لا توجد طلبات معلقة حالياً.")
             return Response(content=str(resp), media_type="application/xml")
 
         if body == "1":
             send_whatsapp_msg(customer_id, "✅ تم تأكيد طلبكم من قبل المطعم.. جاري التحضير الآن! أهلاً وسهلاً فيك.")
-            order_states[customer_id] = 'confirmed'
-            last_customer_mapping.pop("current", None)
+            await set_order_state(customer_id, 'confirmed')
+            await delete_customer_mapping("current")
             resp.message().body("تم إرسال التأكيد للزبون.")
 
         elif body.startswith("2"):
             reason = body[1:].strip() or "المطعم مزدحم حالياً"
             send_whatsapp_msg(customer_id, f"❌ نعتذر منكم، تم رفض الطلب.\nالسبب: {reason}")
-            order_states[customer_id] = 'rejected'
-            last_customer_mapping.pop("current", None)
+            await set_order_state(customer_id, 'rejected')
+            await delete_customer_mapping("current")
             resp.message().body(f"تم إبلاغ الزبون بالرفض لسبب: {reason}")
 
         elif body.startswith("3"):
@@ -213,7 +250,8 @@ async def whatsapp_reply(request: Request, background_tasks: BackgroundTasks):
         return Response(content=str(resp), media_type="application/xml")
 
     # --- 2. صمت البوت للزبون المنتظر ---
-    if order_states.get(sender) == 'waiting_cashier':
+    current_order_state = await get_order_state(sender)
+    if current_order_state == 'waiting_cashier':
         # استخدام BackgroundTasks بدلاً من threading
         background_tasks.add_task(send_with_human_delay, sender, "طلبكم قيد المراجعة لدى الإدارة.. بنخبركم فور التأكيد! بكل سرور.")
         # رد صالح لـ Twilio
@@ -246,8 +284,8 @@ async def whatsapp_reply(request: Request, background_tasks: BackgroundTasks):
         summary = response_text.split("[FINAL_CONFIRMATION]")[1].strip()
         summary = f"📱 رقم الواتساب: {clean_sender}\n" + summary
 
-        last_customer_mapping["current"] = sender
-        order_states[sender] = 'waiting_cashier'
+        await set_customer_mapping("current", sender)
+        await set_order_state(sender, 'waiting_cashier')
 
         response_text = response_text.split("[FINAL_CONFIRMATION]")[0].strip()
         if not response_text:
