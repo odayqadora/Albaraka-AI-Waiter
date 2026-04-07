@@ -1,10 +1,13 @@
 import os
 import math
 import re
-from fastapi import FastAPI, Request, Response
+import time
+import random
+import asyncio
+from fastapi import FastAPI, Request, Response, BackgroundTasks
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
-from langchain_google_genai import ChatGoogleGenerativeAI  # requires GOOGLE_API_KEY in env
+from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
 from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
@@ -26,9 +29,8 @@ AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 PRICE_PER_KM_TL = 40
 MAX_DELIVERY_KM = 50
 
-# مخزن الحالات (يفضل Redis للإنتاج لاحقاً)
 order_states = {}
-last_customer_mapping = {}  # لربط الكاشير بآخر زبون أرسل طلباً
+last_customer_mapping = {}
 
 def _digits_only(phone: str) -> str:
     return re.sub(r"\D", "", phone or "")
@@ -47,11 +49,34 @@ def send_whatsapp_msg(to_phone, message):
         print(f"❌ Error: {e}")
         return False
 
-# قراءة المنيو
+# تم تحويل الدالة إلى async واستخدام asyncio.sleep بدلاً من time.sleep
+async def send_with_human_delay(to_phone: str, message: str):
+    """محاكاة السلوك البشري — تأخير عشوائي قبل الرد"""
+    # تأخير أولي (وكأنه شاف الرسالة وبدأ يفكر)
+    thinking_delay = random.uniform(1.5, 4.0)
+    await asyncio.sleep(thinking_delay)
+
+    # تأخير الكتابة بناءً على طول الرسالة
+    words = len(message.split())
+    typing_speed_wpm = random.uniform(35, 55)
+    typing_delay = (words / typing_speed_wpm) * 60
+    typing_delay = max(2.0, min(typing_delay, 9.0))
+    await asyncio.sleep(typing_delay)
+
+    # إرسال الرسالة
+    send_whatsapp_msg(to_phone, message)
+
+# قراءة المنيو (تأكد من وجود الملف في المسار الصحيح بناءً على هيكل مشروعك)
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+# ملاحظة: تأكد أن ملف menu.txt موجود بالفعل داخل مجلد data إذا استخدمت هذا السطر
 menu_path = os.path.join(BASE_DIR, "data", "menu.txt")
-with open(menu_path, "r", encoding="utf-8") as f:
-    menu_content = f.read()
+try:
+    with open(menu_path, "r", encoding="utf-8") as f:
+        menu_content = f.read()
+except FileNotFoundError:
+    # محاولة قراءته من المجلد الرئيسي إذا لم يكن في مجلد data
+    with open(os.path.join(BASE_DIR, "menu.txt"), "r", encoding="utf-8") as f:
+        menu_content = f.read()
 
 # تهيئة Gemini 2.5 Flash
 llm = ChatGoogleGenerativeAI(
@@ -107,7 +132,6 @@ prompt = ChatPromptTemplate.from_messages([
     ("human", "{question}"),
 ])
 
-# ✅ التعديل الرئيسي: rag_chain يمرر context و sender معاً للـ prompt
 rag_chain = (
     RunnablePassthrough.assign(
         context=lambda x: menu_content,
@@ -129,7 +153,7 @@ conversational_rag_chain = RunnableWithMessageHistory(
 )
 
 def calculate_delivery_fee(user_lat, user_lon):
-    r_lat, r_lon = 41.235278, 28.774333  # إحداثيات مطعم البركة
+    r_lat, r_lon = 41.235278, 28.774333
     R = 6371.0
     lat1, lon1, lat2, lon2 = map(math.radians, [r_lat, r_lon, float(user_lat), float(user_lon)])
     dlon, dlat = lon2 - lon1, lat2 - lat1
@@ -142,15 +166,15 @@ def calculate_delivery_fee(user_lat, user_lon):
 async def home():
     return {"status": "Al-Baraka Smart System Online (FastAPI)"}
 
+# أضفنا BackgroundTasks كمعامل هنا
 @app.post("/whatsapp")
-async def whatsapp_reply(request: Request):
+async def whatsapp_reply(request: Request, background_tasks: BackgroundTasks):
     form_data = await request.form()
     body = form_data.get("Body", "").strip()
     sender = form_data.get("From", "")
     lat = form_data.get("Latitude")
     lon = form_data.get("Longitude")
 
-    # رقم الزبون نظيف بدون "whatsapp:"
     clean_sender = sender.replace("whatsapp:", "")
 
     resp = MessagingResponse()
@@ -162,20 +186,20 @@ async def whatsapp_reply(request: Request):
             resp.message().body("لا توجد طلبات معلقة حالياً.")
             return Response(content=str(resp), media_type="application/xml")
 
-        if body == "1":  # تأكيد
+        if body == "1":
             send_whatsapp_msg(customer_id, "✅ تم تأكيد طلبكم من قبل المطعم.. جاري التحضير الآن! أهلاً وسهلاً فيك.")
             order_states[customer_id] = 'confirmed'
             last_customer_mapping.pop("current", None)
             resp.message().body("تم إرسال التأكيد للزبون.")
 
-        elif body.startswith("2"):  # رفض مع سبب
+        elif body.startswith("2"):
             reason = body[1:].strip() or "المطعم مزدحم حالياً"
             send_whatsapp_msg(customer_id, f"❌ نعتذر منكم، تم رفض الطلب.\nالسبب: {reason}")
             order_states[customer_id] = 'rejected'
             last_customer_mapping.pop("current", None)
             resp.message().body(f"تم إبلاغ الزبون بالرفض لسبب: {reason}")
 
-        elif body.startswith("3"):  # رد مخصص
+        elif body.startswith("3"):
             custom_msg = body[1:].strip()
             if custom_msg:
                 send_whatsapp_msg(customer_id, f"💬 رسالة من إدارة المطعم:\n{custom_msg}")
@@ -190,8 +214,10 @@ async def whatsapp_reply(request: Request):
 
     # --- 2. صمت البوت للزبون المنتظر ---
     if order_states.get(sender) == 'waiting_cashier':
-        resp.message().body("طلبكم قيد المراجعة لدى الإدارة.. بنخبركم فور التأكيد! بكل سرور.")
-        return Response(content=str(resp), media_type="application/xml")
+        # استخدام BackgroundTasks بدلاً من threading
+        background_tasks.add_task(send_with_human_delay, sender, "طلبكم قيد المراجعة لدى الإدارة.. بنخبركم فور التأكيد! بكل سرور.")
+        # رد صالح لـ Twilio
+        return Response(content="<Response></Response>", media_type="application/xml")
 
     # --- 3. منطق الموقع ---
     if lat and lon:
@@ -204,7 +230,6 @@ async def whatsapp_reply(request: Request):
 
     # --- 4. استدعاء الذكاء الاصطناعي ---
     try:
-        # ✅ التعديل: إرسال sender مع question
         response_text = conversational_rag_chain.invoke(
             {
                 "question": body,
@@ -219,8 +244,6 @@ async def whatsapp_reply(request: Request):
     # --- 5. كشف الفاتورة النهائية ---
     if "[FINAL_CONFIRMATION]" in response_text:
         summary = response_text.split("[FINAL_CONFIRMATION]")[1].strip()
-
-        # ✅ إضافة رقم الواتساب تلقائياً في رسالة الكاشير
         summary = f"📱 رقم الواتساب: {clean_sender}\n" + summary
 
         last_customer_mapping["current"] = sender
@@ -241,11 +264,13 @@ async def whatsapp_reply(request: Request):
         )
         send_whatsapp_msg(CASHIER_PHONE, cashier_menu)
 
-    resp.message().body(response_text)
-    return Response(content=str(resp), media_type="application/xml")
+    # --- 6. ✅ الإرسال بتأخير بشري باستخدام BackgroundTasks ---
+    background_tasks.add_task(send_with_human_delay, sender, response_text)
+
+    # رد صالح لـ Twilio لمنع الأخطاء
+    return Response(content="<Response></Response>", media_type="application/xml")
 
 # للتشغيل المحلي:
-#   uvicorn rag_bot:app --host 0.0.0.0 --port 10000 --reload
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("rag_bot:app", host="0.0.0.0", port=10000, reload=True)
