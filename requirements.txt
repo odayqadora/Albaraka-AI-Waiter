@@ -8,5 +8,5 @@ langchain-core
 langchain-google-genai
 google-generativeai
 requests
-aiosqlite
+asyncpg==0.29.0
 python-dotenv

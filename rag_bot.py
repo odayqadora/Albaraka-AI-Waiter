@@ -4,7 +4,7 @@ import re
 import time
 import random
 import asyncio
-import aiosqlite  # Import aiosqlite
+import asyncpg  # تم الاستبدال بـ asyncpg
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
@@ -16,20 +16,40 @@ from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
 
 # --- Database setup ---
-DB_FILE = "bot.db"
+DATABASE_URL = os.environ.get("DATABASE_URL")
 
 async def db_execute(query, params=(), fetch=None):
-    """General purpose async function to execute DB queries."""
-    async with aiosqlite.connect(DB_FILE) as db:
-        cursor = await db.execute(query, params)
-        if fetch == 'one':
-            result = await cursor.fetchone()
-        elif fetch == 'all':
-            result = await cursor.fetchall()
-        else:
-            await db.commit()
-            result = None
-        return result
+    """General purpose async function to execute DB queries via PostgreSQL."""
+    if not DATABASE_URL:
+        print("Warning: DATABASE_URL not set!")
+        return None
+
+    # تحويل علامات الاستفهام الخاصة بـ SQLite (?) إلى تنسيق PostgreSQL ($1, $2, ...)
+    formatted_query = query
+    for i in range(1, len(params) + 1):
+        formatted_query = formatted_query.replace('?', f'${i}', 1)
+
+    # تحويل استعلامات الإدراج لتتوافق مع بيئة PostgreSQL
+    if "INSERT OR REPLACE INTO order_states" in formatted_query:
+        formatted_query = "INSERT INTO order_states (customer_id, state) VALUES ($1, $2) ON CONFLICT (customer_id) DO UPDATE SET state = EXCLUDED.state"
+    elif "INSERT OR REPLACE INTO customer_mapping" in formatted_query:
+        formatted_query = "INSERT INTO customer_mapping (key, customer_id) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET customer_id = EXCLUDED.customer_id"
+
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        try:
+            if fetch == 'one':
+                return await conn.fetchrow(formatted_query, *params)
+            elif fetch == 'all':
+                return await conn.fetch(formatted_query, *params)
+            else:
+                await conn.execute(formatted_query, *params)
+                return None
+        finally:
+            await conn.close()
+    except Exception as e:
+        print(f"Database Error: {e}")
+        return None
 
 # --- Async DB functions to replace dictionaries ---
 async def get_order_state(customer_id: str):
@@ -64,10 +84,6 @@ AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
 
 PRICE_PER_KM_TL = 40
 MAX_DELIVERY_KM = 50
-
-# The dictionaries are now replaced by the async DB functions
-# order_states = {}
-# last_customer_mapping = {}
 
 def _digits_only(phone: str) -> str:
     return re.sub(r"\D", "", phone or "")
@@ -203,7 +219,6 @@ def calculate_delivery_fee(user_lat, user_lon):
 async def home():
     return {"status": "Al-Baraka Smart System Online (FastAPI)"}
 
-# أضفنا BackgroundTasks كمعامل هنا
 @app.post("/whatsapp")
 async def whatsapp_reply(request: Request, background_tasks: BackgroundTasks):
     form_data = await request.form()
@@ -252,9 +267,7 @@ async def whatsapp_reply(request: Request, background_tasks: BackgroundTasks):
     # --- 2. صمت البوت للزبون المنتظر ---
     current_order_state = await get_order_state(sender)
     if current_order_state == 'waiting_cashier':
-        # استخدام BackgroundTasks بدلاً من threading
         background_tasks.add_task(send_with_human_delay, sender, "طلبكم قيد المراجعة لدى الإدارة.. بنخبركم فور التأكيد! بكل سرور.")
-        # رد صالح لـ Twilio
         return Response(content="<Response></Response>", media_type="application/xml")
 
     # --- 3. منطق الموقع ---
@@ -302,13 +315,12 @@ async def whatsapp_reply(request: Request, background_tasks: BackgroundTasks):
         )
         send_whatsapp_msg(CASHIER_PHONE, cashier_menu)
 
-    # --- 6. ✅ الإرسال بتأخير بشري باستخدام BackgroundTasks ---
+    # --- 6. الإرسال بتأخير بشري باستخدام BackgroundTasks ---
     background_tasks.add_task(send_with_human_delay, sender, response_text)
 
     # رد صالح لـ Twilio لمنع الأخطاء
     return Response(content="<Response></Response>", media_type="application/xml")
 
-# للتشغيل المحلي:
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("rag_bot:app", host="0.0.0.0", port=10000, reload=True)

@@ -2,6 +2,7 @@ from flask import Flask
 from langchain_community.llms import Ollama # للمحلي فقط
 import arabic_reshaper
 from bidi.algorithm import get_display
+from init_db import init_db
 
 app = Flask(__name__)
 
@@ -9,6 +10,10 @@ app = Flask(__name__)
 def print_arabic(text):
     reshaped = arabic_reshaper.reshape(text)
     print(get_display(reshaped))
+
+@app.on_event("startup")
+async def startup_event():
+    await init_db()
 
 # 1. مسار الإيقاظ (لـ Cron-job)
 @app.route('/')
