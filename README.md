@@ -46,3 +46,12 @@ Want to see the bot in action? You can chat with it directly on your WhatsApp!
 
 ---
 **Developed to revolutionize the restaurant ordering experience.**
+
+<img width="1195" height="1528" alt="555aeae9-cd5e-4829-be4e-415a4fecac1b" src="https://github.com/user-attachments/assets/a5fb8b69-f93f-4d5c-aeca-a5d6cfccff73" />
+
+<img width="1200" height="1283" alt="01e5b003-d5ad-4a6f-aea3-d90c65fe0194" src="https://github.com/user-attachments/assets/a82000f6-73df-45c1-849b-0ad4ea71bb6a" />
+
+<img width="600" height="440" alt="Screenshot 2026-04-22 234807" src="https://github.com/user-attachments/assets/be0d9590-ad51-4423-a545-f6c6d9fd7347" />
+
+
+
