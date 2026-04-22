@@ -33,7 +33,7 @@ Want to see the bot in action? You can chat with it directly on your WhatsApp!
 * **Core AI:** LangChain, Google Gemini 2.5 Flash
 * **Math & Logic:** Python (Haversine formula for geospatial logic)
 * **Integration:** Twilio Sandbox API (WhatsApp Webhooks)
-* **Deployment:** Ready for Cloud Hosting (Render, VPS, etc.)
+* **Deployment:** Deployed on Render (Live & Production-Ready)
 
 ## 💡 How It Works Under the Hood
 
