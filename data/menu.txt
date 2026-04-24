@@ -1,241 +1,271 @@
+========================================
 قائمة طعام مطعم البركة
+Al-Baraka Restaurant Menu
+Al-Baraka Restaurant Menüsü
+========================================
 
---- الأطباق الشرقية (دجاج) ---
-مندي نصف دجاجة
-السعر: 390 ليرة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+الأطباق الشرقية (دجاج) | Eastern Dishes (Chicken) | Doğu Yemekleri (Tavuk)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-منسف نصف دجاجة
-السعر: 480 ليرة
+مندي نصف دجاجة | Mandi Half Chicken | Mandi Yarım Tavuk
+السعر / Price / Fiyat: 390 ليرة
 
-فتة نصف دجاجة
-السعر: 450 ليرة
+منسف نصف دجاجة | Mansaf Half Chicken | Mansaf Yarım Tavuk
+السعر / Price / Fiyat: 480 ليرة
 
-قدرة نصف دجاجة
-السعر: 390 ليرة
+فتة نصف دجاجة | Fatteh Half Chicken | Fatteh Yarım Tavuk
+السعر / Price / Fiyat: 450 ليرة
 
-مقلوبة نصف دجاجة
-السعر: 490 ليرة
+قدرة نصف دجاجة | Qidreh Half Chicken | Qidreh Yarım Tavuk
+السعر / Price / Fiyat: 390 ليرة
 
-مفتول نص دجاجة
-السعر: 490 ليرة
+مقلوبة نصف دجاجة | Maqluba Half Chicken | Maqluba Yarım Tavuk
+السعر / Price / Fiyat: 490 ليرة
 
-مسخن نصف دجاجة
-السعر: 520 ليرة
+مفتول نصف دجاجة | Maftoul Half Chicken | Maftoul Yarım Tavuk
+السعر / Price / Fiyat: 490 ليرة
 
-ملوخية نصف دجاجة
-السعر: 490 ليرة
+مسخن نصف دجاجة | Musakhan Half Chicken | Musakhan Yarım Tavuk
+السعر / Price / Fiyat: 520 ليرة
 
-أوزي نصف دجاجة
-السعر: 390 ليرة
+ملوخية نصف دجاجة | Molokhia Half Chicken | Molokhia Yarım Tavuk
+السعر / Price / Fiyat: 490 ليرة
 
-فروج محشي مع أرز
-السعر: 870 ليرة
+أوزي نصف دجاجة | Ouzi Half Chicken | Ouzi Yarım Tavuk
+السعر / Price / Fiyat: 390 ليرة
 
+فروج محشي مع أرز | Stuffed Chicken with Rice | Pilavlı Doldurulmuş Tavuk
+السعر / Price / Fiyat: 870 ليرة
 
---- الأطباق الشرقية (لحم) ---
-أوزي لحم
-السعر: 690 ليرة
 
-مندي لحم
-السعر: 690 ليرة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+الأطباق الشرقية (لحم) | Eastern Dishes (Meat) | Doğu Yemekleri (Et)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-منسف لحم
-السعر: 790 ليرة
+أوزي لحم | Ouzi with Meat | Etli Ouzi
+السعر / Price / Fiyat: 690 ليرة
 
-فتة لحم
-السعر: 760 ليرة
+مندي لحم | Mandi with Meat | Etli Mandi
+السعر / Price / Fiyat: 690 ليرة
 
-قدرة لحم
-السعر: 690 ليرة
+منسف لحم | Mansaf with Meat | Etli Mansaf
+السعر / Price / Fiyat: 790 ليرة
 
-مقلوبة لحم
-السعر: 790 ليرة
+فتة لحم | Fatteh with Meat | Etli Fatteh
+السعر / Price / Fiyat: 760 ليرة
 
-مفتول لحم
-السعر: 790 ليرة
+قدرة لحم | Qidreh with Meat | Etli Qidreh
+السعر / Price / Fiyat: 690 ليرة
 
-ملوخية لحم
-السعر: 790 ليرة
+مقلوبة لحم | Maqluba with Meat | Etli Maqluba
+السعر / Price / Fiyat: 790 ليرة
 
-بامية لحم
-السعر: 790 ليرة
+مفتول لحم | Maftoul with Meat | Etli Maftoul
+السعر / Price / Fiyat: 790 ليرة
 
-مفتول مع يخني
-السعر: 290 ليرة
+ملوخية لحم | Molokhia with Meat | Etli Molokhia
+السعر / Price / Fiyat: 790 ليرة
 
-كتف خاروف مشوي بالفرن على أرز
-السعر: 4000 ليرة
+بامية لحم | Okra with Meat | Etli Bamya
+السعر / Price / Fiyat: 790 ليرة
 
-فخارة البركة قدرة
-السعر: 840 ليرة
+مفتول مع يخني | Maftoul with Stew | Yahni ile Maftoul
+السعر / Price / Fiyat: 290 ليرة
 
-فخارة قدرة لحم
-السعر: 840 ليرة
+كتف خاروف مشوي بالفرن على أرز | Oven-Roasted Lamb Shoulder on Rice | Fırında Kuzu Kolu Pilavı Üzerinde
+السعر / Price / Fiyat: 4000 ليرة
 
+فخارة البركة قدرة | Al-Baraka Clay Pot Qidreh | Al-Baraka Güveç Qidreh
+السعر / Price / Fiyat: 840 ليرة
 
---- قسم المشاوي ---
-وجبة كباب فلسطيني
-السعر: 620 ليرة
+فخارة قدرة لحم | Clay Pot Qidreh with Meat | Etli Güveç Qidreh
+السعر / Price / Fiyat: 840 ليرة
 
-عرايس كفتة البركة
-السعر: 460 ليرة
 
-وجبة ريش خروف مشوية
-السعر: 870 ليرة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+قسم المشاوي | Grills Section | Izgara Bölümü
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-وجبة شقف لحم مشوي
-السعر: 870 ليرة
+وجبة كباب فلسطيني | Palestinian Kebab Meal | Filistin Kebabı Menüsü
+السعر / Price / Fiyat: 620 ليرة
 
-وجبة كباب دجاج
-السعر: 390 ليرة
+عرايس كفتة البركة | Al-Baraka Kofta Arayes | Al-Baraka Köfte Arayes
+السعر / Price / Fiyat: 460 ليرة
 
-وجبة شيش طاووق
-السعر: 390 ليرة
+وجبة ريش خروف مشوية | Grilled Lamb Ribs Meal | Izgara Kuzu Kaburga Menüsü
+السعر / Price / Fiyat: 870 ليرة
 
-وجبة مشاوي مشكل لحم ودجاج
-السعر: 620 ليرة
+وجبة شقف لحم مشوي | Grilled Meat Pieces Meal | Izgara Et Parçaları Menüsü
+السعر / Price / Fiyat: 870 ليرة
 
-وجبة دجاج مشوي عالفحم
-السعر: 390 ليرة
+وجبة كباب دجاج | Chicken Kebab Meal | Tavuk Kebabı Menüsü
+السعر / Price / Fiyat: 390 ليرة
 
-وجبة مشاوي البركة VIP
-السعر: 830 ليرة
+وجبة شيش طاووق | Shish Tawook Meal | Şiş Tavuk Menüsü
+السعر / Price / Fiyat: 390 ليرة
 
+وجبة مشاوي مشكل لحم ودجاج | Mixed Grill Meat & Chicken Meal | Karışık Izgara Et ve Tavuk Menüsü
+السعر / Price / Fiyat: 620 ليرة
 
---- الفخارات ---
-وجبة كفتة لحم بالبندورة
-السعر: 690 ليرة
+وجبة دجاج مشوي عالفحم | Charcoal Grilled Chicken Meal | Kömürde Izgara Tavuk Menüsü
+السعر / Price / Fiyat: 390 ليرة
 
-وجبة كفتة لحم بالطحينة
-السعر: 690 ليرة
+وجبة مشاوي البركة VIP | Al-Baraka VIP Grill Meal | Al-Baraka VIP Izgara Menüsü
+السعر / Price / Fiyat: 830 ليرة
 
-فخارة ورق عنب بلحم الخروف
-السعر: 790 ليرة
 
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+الفخارات | Clay Pot Dishes | Güveç Yemekleri
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
---- السلطات والمقبلات ---
-سلطة البركة المشكل
-السعر: 460 ليرة
+وجبة كفتة لحم بالبندورة | Kofta with Tomato Meal | Domatesli Köfte Menüsü
+السعر / Price / Fiyat: 690 ليرة
 
-سلطة تبولة
-السعر: 240 ليرة
+وجبة كفتة لحم بالطحينة | Kofta with Tahini Meal | Tahinli Köfte Menüsü
+السعر / Price / Fiyat: 690 ليرة
 
-سلطة خضار
-السعر: 210 ليرة
+فخارة ورق عنب بلحم الخروف | Clay Pot Stuffed Grape Leaves with Lamb | Kuzu Etli Sarma Güveç
+السعر / Price / Fiyat: 790 ليرة
 
-سلطة جرجير
-السعر: 230 ليرة
 
-سلطة فتوش
-السعر: 230 ليرة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+السلطات والمقبلات | Salads & Appetizers | Salatalar ve Mezeler
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-سلطة طحينية
-السعر: 240 ليرة
+سلطة البركة المشكل | Al-Baraka Mixed Salad | Al-Baraka Karışık Salata
+السعر / Price / Fiyat: 460 ليرة
 
-صحن سلطة غزاوية حراقة
-السعر: 230 ليرة
+سلطة تبولة | Tabbouleh Salad | Tabbouleh Salatası
+السعر / Price / Fiyat: 240 ليرة
 
-صحن مخلالات
-السعر: 120 ليرة
+سلطة خضار | Vegetable Salad | Sebze Salatası
+السعر / Price / Fiyat: 210 ليرة
 
-صحن متبل باذنجان
-السعر: 190 ليرة
+سلطة جرجير | Arugula Salad | Roka Salatası
+السعر / Price / Fiyat: 230 ليرة
 
-صحن حمص
-السعر: 190 ليرة
+سلطة فتوش | Fattoush Salad | Fattoush Salatası
+السعر / Price / Fiyat: 230 ليرة
 
-كبة مشوية (قطعة واحدة)
-السعر: 160 ليرة
+سلطة طحينية | Tahini Salad | Tahin Salatası
+السعر / Price / Fiyat: 240 ليرة
 
-كبة مقلية (قطعة واحدة)
-السعر: 160 ليرة
+صحن سلطة غزاوية حراقة | Spicy Gazan Salad | Acı Gazze Salatası
+السعر / Price / Fiyat: 230 ليرة
 
+صحن مخلالات | Pickles Plate | Turşu Tabağı
+السعر / Price / Fiyat: 120 ليرة
 
---- الشوربات والطلبات الجانبية ---
-ملوخية سادة (سفري فقط)
-السعر: 240 ليرة
+صحن متبل باذنجان | Mutabbal Eggplant Plate | Patlıcan Mutabbal Tabağı
+السعر / Price / Fiyat: 190 ليرة
 
-شوربة عدس
-السعر: 130 ليرة
+صحن حمص | Hummus Plate | Humus Tabağı
+السعر / Price / Fiyat: 190 ليرة
 
-شوربة فريكة
-السعر: 150 ليرة
+كبة مشوية (قطعة واحدة) | Grilled Kibbeh (1 piece) | Izgara Kibbe (1 adet)
+السعر / Price / Fiyat: 160 ليرة
 
-جميد
-السعر: 150 ليرة
+كبة مقلية (قطعة واحدة) | Fried Kibbeh (1 piece) | Kızarmış Kibbe (1 adet)
+السعر / Price / Fiyat: 160 ليرة
 
-بامية مع رز
-السعر: 340 ليرة
 
-ملوخية مع رز
-السعر: 340 ليرة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+الشوربات والطلبات الجانبية | Soups & Sides | Çorbalar ve Yan Yemekler
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-رز سادة ابيض / رز سادة قدرة / رز سادة أوزي / رز سادة مندي
-السعر: 190 ليرة
+ملوخية سادة (سفري فقط) | Plain Molokhia (Takeaway Only) | Sade Molokhia (Yalnızca Paket Servis)
+السعر / Price / Fiyat: 240 ليرة
 
+شوربة عدس | Lentil Soup | Mercimek Çorbası
+السعر / Price / Fiyat: 130 ليرة
 
---- الفطور والمناقيش ---
-منقوشة البركة الخاصة
-السعر: 270 ليرة
+شوربة فريكة | Freekeh Soup | Freekeh Çorbası
+السعر / Price / Fiyat: 150 ليرة
 
-منقوشة جبنة مع زيتون
-السعر: 250 ليرة
+جميد | Jameed | Jameed
+السعر / Price / Fiyat: 150 ليرة
 
-منقوشة جبنة مع زعتر
-السعر: 230 ليرة
+بامية مع رز | Okra with Rice | Pilavlı Bamya
+السعر / Price / Fiyat: 340 ليرة
 
-منقوشة جبنة عكاوي
-السعر: 190 ليرة
+ملوخية مع رز | Molokhia with Rice | Pilavlı Molokhia
+السعر / Price / Fiyat: 340 ليرة
 
-منقوشة دقة غزاويه
-السعر: 150 ليرة
+رز سادة (أبيض / قدرة / أوزي / مندي) | Plain Rice (White / Qidreh / Ouzi / Mandi) | Sade Pilav (Beyaz / Qidreh / Ouzi / Mandi)
+السعر / Price / Fiyat: 190 ليرة
 
-منقوشة زعتر
-السعر: 150 ليرة
 
-مسبحة (فول + حمص)
-السعر: 210 ليرة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+الفطور والمناقيش | Breakfast & Manakeesh | Kahvaltı ve Manakiş
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-فول غزاوي
-السعر: 190 ليرة
+منقوشة البركة الخاصة | Al-Baraka Special Manoushe | Al-Baraka Özel Manakiş
+السعر / Price / Fiyat: 270 ليرة
 
-فول بالطحينية
-السعر: 190 ليرة
+منقوشة جبنة مع زيتون | Cheese & Olive Manoushe | Peynirli Zeytinli Manakiş
+السعر / Price / Fiyat: 250 ليرة
 
-حمص بالطحينية
-السعر: 190 ليرة
+منقوشة جبنة مع زعتر | Cheese & Za'atar Manoushe | Peynirli Za'atarlı Manakiş
+السعر / Price / Fiyat: 230 ليرة
 
-قدسية حمص
-السعر: 210 ليرة
+منقوشة جبنة عكاوي | Akkawi Cheese Manoushe | Akkawi Peynirli Manakiş
+السعر / Price / Fiyat: 190 ليرة
 
-حمص باللحمة والمكسرات
-السعر: 530 ليرة
+منقوشة دقة غزاوية | Gazan Daqqa Manoushe | Gazze Usulü Daqqa Manakiş
+السعر / Price / Fiyat: 150 ليرة
 
+منقوشة زعتر | Za'atar Manoushe | Za'atarlı Manakiş
+السعر / Price / Fiyat: 150 ليرة
 
---- الحلويات والمشروبات ---
-حلوى تاراميسيو
-السعر: 220 ليرة
+مسبحة (فول + حمص) | Msabbaha (Foul + Hummus) | Msabbaha (Bakla + Humus)
+السعر / Price / Fiyat: 210 ليرة
 
-حلوى كريم كراميل
-السعر: 170 ليرة
+فول غزاوي | Gazan Foul | Gazze Usulü Bakla
+السعر / Price / Fiyat: 190 ليرة
 
-صحن كعك فلسطيني 4 حبات
-السعر: 150 ليرة
+فول بالطحينية | Foul with Tahini | Tahinli Bakla
+السعر / Price / Fiyat: 190 ليرة
 
-عصير برتقال طبيعي (موسمي)
-السعر: 180 ليرة
+حمص بالطحينية | Hummus with Tahini | Tahinli Humus
+السعر / Price / Fiyat: 190 ليرة
 
-عصير ليمون مع نعناع طبيعي
-السعر: 180 ليرة
+قدسية حمص | Qudsiyeh Hummus | Kudüs Usulü Humus
+السعر / Price / Fiyat: 210 ليرة
 
-ليمون فريش (نعنع / مانجو)
-السعر: 90 ليرة
+حمص باللحمة والمكسرات | Hummus with Meat & Nuts | Etli ve Fıstıklı Humus
+السعر / Price / Fiyat: 530 ليرة
 
-كولا توركا / عصير فواكه / ماندرين برتقال
-السعر: 70 ليرة
 
-شاي (عادي)
-السعر: 50 ليرة
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+الحلويات والمشروبات | Desserts & Beverages | Tatlılar ve İçecekler
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
-قهوة (عادي)
-السعر: 80 ليرة
+حلوى تيراميسو | Tiramisu | Tiramisu
+السعر / Price / Fiyat: 220 ليرة
+
+حلوى كريم كراميل | Crème Caramel | Krem Karamel
+السعر / Price / Fiyat: 170 ليرة
+
+صحن كعك فلسطيني 4 حبات | Palestinian Ka'ak Plate (4 pieces) | Filistin Ka'ak Tabağı (4 adet)
+السعر / Price / Fiyat: 150 ليرة
+
+عصير برتقال طبيعي (موسمي) | Fresh Orange Juice (Seasonal) | Taze Portakal Suyu (Mevsimlik)
+السعر / Price / Fiyat: 180 ليرة
+
+عصير ليمون مع نعناع طبيعي | Fresh Lemonade with Mint | Naneli Taze Limonata
+السعر / Price / Fiyat: 180 ليرة
+
+ليمون فريش (نعنع / مانجو) | Fresh Lemon (Mint / Mango) | Taze Limon (Nane / Mango)
+السعر / Price / Fiyat: 90 ليرة
+
+كولا توركا / عصير فواكه / ماندرين برتقال | Cola Turka / Fruit Juice / Mandarin Orange | Kola Turka / Meyve Suyu / Mandalina
+السعر / Price / Fiyat: 70 ليرة
+
+شاي (عادي) | Tea (Regular) | Çay (Normal)
+السعر / Price / Fiyat: 50 ليرة
+
+قهوة (عادي) | Coffee (Regular) | Kahve (Normal)
+السعر / Price / Fiyat: 80 ليرة
+
+========================================
