@@ -197,22 +197,19 @@ def get_session_history(session_id: str) -> SQLiteChatHistory:
 
 # ─────────────────────────────────────────────────────────────
 # FIX #5 — menu.txt: safe loading with fallback
-# ─────────────────────────────────────────────────────────────
-MENU_FALLBACK = (
-    "⚠️  قائمة الطعام غير متوفرة مؤقتاً. يرجى التواصل مع الكاشير مباشرة."
-)
+BASE_DIR  = os.path.dirname(os.path.abspath(__file__))
+MENU_PATH = os.path.join(BASE_DIR, "data", "menu.txt")
 
 try:
-    with open("menu.txt", "r", encoding="utf-8") as _f:
+    with open(MENU_PATH, "r", encoding="utf-8") as _f:
         menu_content = _f.read()
-    print("✅ menu.txt loaded successfully.")
+    print(f"✅ menu.txt loaded from: {MENU_PATH}")
 except FileNotFoundError:
     menu_content = MENU_FALLBACK
-    print("❌ ERROR: menu.txt not found — using fallback menu text.")
+    print(f"❌ ERROR: menu.txt not found at: {MENU_PATH}")
 except Exception as _e:
     menu_content = MENU_FALLBACK
-    print(f"❌ ERROR reading menu.txt: {_e} — using fallback menu text.")
-
+    print(f"❌ ERROR reading menu.txt: {_e}")
 
 # ─────────────────────────────────────────────────────────────
 # LLM + CHAIN
