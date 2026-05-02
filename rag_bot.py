@@ -1,11 +1,10 @@
 import os
 import math
 import re
-import time
-import random
-import asyncio
-import asyncpg  # تم الاستبدال بـ asyncpg
-from fastapi import FastAPI, Request, Response, BackgroundTasks
+import json
+import sqlite3
+from datetime import datetime
+from fastapi import FastAPI, Request, Response
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
 from langchain_google_genai import ChatGoogleGenerativeAI
@@ -14,313 +13,577 @@ from langchain_core.runnables import RunnablePassthrough
 from langchain_core.output_parsers import StrOutputParser
 from langchain_community.chat_message_histories import ChatMessageHistory
 from langchain_core.runnables.history import RunnableWithMessageHistory
-
-# --- Database setup ---
-DATABASE_URL = os.environ.get("DATABASE_URL")
-
-async def db_execute(query, params=(), fetch=None):
-    """General purpose async function to execute DB queries via PostgreSQL."""
-    if not DATABASE_URL:
-        print("Warning: DATABASE_URL not set!")
-        return None
-
-    # تحويل علامات الاستفهام الخاصة بـ SQLite (?) إلى تنسيق PostgreSQL ($1, $2, ...)
-    formatted_query = query
-    for i in range(1, len(params) + 1):
-        formatted_query = formatted_query.replace('?', f'${i}', 1)
-
-    # تحويل استعلامات الإدراج لتتوافق مع بيئة PostgreSQL
-    if "INSERT OR REPLACE INTO order_states" in formatted_query:
-        formatted_query = "INSERT INTO order_states (customer_id, state) VALUES ($1, $2) ON CONFLICT (customer_id) DO UPDATE SET state = EXCLUDED.state"
-    elif "INSERT OR REPLACE INTO customer_mapping" in formatted_query:
-        formatted_query = "INSERT INTO customer_mapping (key, customer_id) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET customer_id = EXCLUDED.customer_id"
-
-    try:
-        conn = await asyncpg.connect(DATABASE_URL)
-        try:
-            if fetch == 'one':
-                return await conn.fetchrow(formatted_query, *params)
-            elif fetch == 'all':
-                return await conn.fetch(formatted_query, *params)
-            else:
-                await conn.execute(formatted_query, *params)
-                return None
-        finally:
-            await conn.close()
-    except Exception as e:
-        print(f"Database Error: {e}")
-        return None
-
-# --- Async DB functions to replace dictionaries ---
-async def get_order_state(customer_id: str):
-    result = await db_execute("SELECT state FROM order_states WHERE customer_id = ?", (customer_id,), fetch='one')
-    return result[0] if result else None
-
-async def set_order_state(customer_id: str, state: str):
-    await db_execute("INSERT OR REPLACE INTO order_states (customer_id, state) VALUES (?, ?)", (customer_id, state))
-
-async def get_customer_mapping(key: str):
-    result = await db_execute("SELECT customer_id FROM customer_mapping WHERE key = ?", (key,), fetch='one')
-    return result[0] if result else None
-
-async def set_customer_mapping(key: str, customer_id: str):
-    await db_execute("INSERT OR REPLACE INTO customer_mapping (key, customer_id) VALUES (?, ?)", (key, customer_id))
-
-async def delete_customer_mapping(key: str):
-    await db_execute("DELETE FROM customer_mapping WHERE key = ?", (key,))
-
+from langchain_core.messages import HumanMessage, AIMessage
 
 app = FastAPI(
     title="مطعم البركة — واتساب",
     description="Webhook Twilio + RAG (Gemini) للطلبات والتوصيل.",
-    version="1.0.0",
+    version="2.0.0",
 )
 
-# الإعدادات
-CASHIER_PHONE = os.environ.get("CASHIER_PHONE")
-TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM")
-ACCOUNT_SID = os.environ.get("TWILIO_ACCOUNT_SID")
-AUTH_TOKEN = os.environ.get("TWILIO_AUTH_TOKEN")
+# ─────────────────────────────────────────────────────────────
+# ENVIRONMENT VARIABLES
+# ─────────────────────────────────────────────────────────────
+CASHIER_PHONE         = os.environ.get("CASHIER_PHONE")
+TWILIO_WHATSAPP_FROM  = os.environ.get("TWILIO_WHATSAPP_FROM")
+ACCOUNT_SID           = os.environ.get("TWILIO_ACCOUNT_SID")
+AUTH_TOKEN            = os.environ.get("TWILIO_AUTH_TOKEN")
+PRICE_PER_KM_TL       = 40
+MAX_DELIVERY_KM       = 50
+DB_PATH               = "albaraka_state.db"
 
-PRICE_PER_KM_TL = 40
-MAX_DELIVERY_KM = 50
+# ─────────────────────────────────────────────────────────────
+# FIX #4 — Twilio client: initialise ONCE globally, reuse everywhere
+# ─────────────────────────────────────────────────────────────
+if ACCOUNT_SID and AUTH_TOKEN:
+    twilio_client = Client(ACCOUNT_SID, AUTH_TOKEN)
+else:
+    twilio_client = None
+    print("⚠️  WARNING: Twilio credentials missing — send_whatsapp_msg will be disabled.")
 
-def _digits_only(phone: str) -> str:
-    return re.sub(r"\D", "", phone or "")
 
-def is_cashier_sender(from_field: str) -> bool:
-    if not CASHIER_PHONE: return False
-    return _digits_only(from_field) == _digits_only(CASHIER_PHONE)
+# ─────────────────────────────────────────────────────────────
+# FIX #3 — SQLite persistence layer
+#           Replaces in-memory dicts that were lost on restart
+# ─────────────────────────────────────────────────────────────
+def _db_conn() -> sqlite3.Connection:
+    """Return a thread-safe SQLite connection."""
+    return sqlite3.connect(DB_PATH, check_same_thread=False)
 
-def send_whatsapp_msg(to_phone, message):
-    try:
-        client = Client(ACCOUNT_SID, AUTH_TOKEN)
-        to_wa = to_phone if to_phone.startswith("whatsapp:") else f"whatsapp:{to_phone}"
-        client.messages.create(body=message, from_=TWILIO_WHATSAPP_FROM, to=to_wa)
-        return True
-    except Exception as e:
-        print(f"❌ Error: {e}")
-        return False
 
-# تم تحويل الدالة إلى async واستخدام asyncio.sleep بدلاً من time.sleep
-async def send_with_human_delay(to_phone: str, message: str):
-    """محاكاة السلوك البشري — تأخير عشوائي قبل الرد"""
-    # تأخير أولي (وكأنه شاف الرسالة وبدأ يفكر)
-    thinking_delay = random.uniform(1.5, 4.0)
-    await asyncio.sleep(thinking_delay)
+def init_db() -> None:
+    """Create all tables if they don't already exist."""
+    with _db_conn() as conn:
+        conn.executescript("""
+            -- Per-customer order state (waiting_cashier / confirmed / rejected)
+            CREATE TABLE IF NOT EXISTS order_states (
+                phone      TEXT PRIMARY KEY,
+                state      TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
 
-    # تأخير الكتابة بناءً على طول الرسالة
-    words = len(message.split())
-    typing_speed_wpm = random.uniform(35, 55)
-    typing_delay = (words / typing_speed_wpm) * 60
-    typing_delay = max(2.0, min(typing_delay, 9.0))
-    await asyncio.sleep(typing_delay)
+            -- FIX #1 — pending_orders keyed by last-4 digits
+            --           Supports multiple simultaneous pending orders
+            CREATE TABLE IF NOT EXISTS pending_orders (
+                last4      TEXT PRIMARY KEY,
+                phone      TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            );
 
-    # إرسال الرسالة
-    send_whatsapp_msg(to_phone, message)
+            -- Serialised LangChain chat history (survives server restarts)
+            CREATE TABLE IF NOT EXISTS chat_history (
+                session_id TEXT PRIMARY KEY,
+                messages   TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+        """)
 
-# قراءة المنيو (تأكد من وجود الملف في المسار الصحيح بناءً على هيكل مشروعك)
-BASE_DIR = os.path.dirname(os.path.abspath(__file__))
-# ملاحظة: تأكد أن ملف menu.txt موجود بالفعل داخل مجلد data إذا استخدمت هذا السطر
-menu_path = os.path.join(BASE_DIR, "data", "menu.txt")
+
+# ── order_states helpers ──────────────────────────────────────
+def get_order_state(phone: str) -> str | None:
+    with _db_conn() as conn:
+        row = conn.execute(
+            "SELECT state FROM order_states WHERE phone = ?", (phone,)
+        ).fetchone()
+    return row[0] if row else None
+
+
+def set_order_state(phone: str, state: str) -> None:
+    with _db_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO order_states (phone, state, updated_at) VALUES (?, ?, ?)",
+            (phone, state, datetime.utcnow().isoformat()),
+        )
+
+
+def delete_order_state(phone: str) -> None:
+    with _db_conn() as conn:
+        conn.execute("DELETE FROM order_states WHERE phone = ?", (phone,))
+
+
+# ── pending_orders helpers (FIX #1) ──────────────────────────
+def add_pending_order(phone: str) -> str:
+    """Store phone keyed by its last 4 digits. Returns last4."""
+    last4 = _digits_only(phone)[-4:]
+    with _db_conn() as conn:
+        conn.execute(
+            "INSERT OR REPLACE INTO pending_orders (last4, phone, created_at) VALUES (?, ?, ?)",
+            (last4, phone, datetime.utcnow().isoformat()),
+        )
+    return last4
+
+
+def get_pending_phone(last4: str) -> str | None:
+    """Resolve last-4-digit key → full customer phone."""
+    with _db_conn() as conn:
+        row = conn.execute(
+            "SELECT phone FROM pending_orders WHERE last4 = ?", (last4,)
+        ).fetchone()
+    return row[0] if row else None
+
+
+def remove_pending_order(last4: str) -> None:
+    with _db_conn() as conn:
+        conn.execute("DELETE FROM pending_orders WHERE last4 = ?", (last4,))
+
+
+def list_pending_orders() -> dict[str, str]:
+    """Return {last4: phone} for all currently pending orders."""
+    with _db_conn() as conn:
+        rows = conn.execute("SELECT last4, phone FROM pending_orders").fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+# ── chat_history helpers ─────────────────────────────────────
+class SQLiteChatHistory(ChatMessageHistory):
+    """
+    ChatMessageHistory backed by SQLite.
+    Loads existing messages on construction; persists on every add_message call.
+    """
+
+    def __init__(self, session_id: str):
+        super().__init__()
+        self.session_id = session_id
+        self._load()
+
+    # ── private ──────────────────────────────────────────────
+    def _load(self) -> None:
+        with _db_conn() as conn:
+            row = conn.execute(
+                "SELECT messages FROM chat_history WHERE session_id = ?",
+                (self.session_id,),
+            ).fetchone()
+        if not row:
+            return
+        try:
+            for m in json.loads(row[0]):
+                if m.get("type") == "human":
+                    self.messages.append(HumanMessage(content=m["content"]))
+                elif m.get("type") == "ai":
+                    self.messages.append(AIMessage(content=m["content"]))
+        except Exception as e:
+            print(f"⚠️  Failed to load chat history for {self.session_id}: {e}")
+
+    def _save(self) -> None:
+        serialised = []
+        for m in self.messages:
+            if isinstance(m, HumanMessage):
+                serialised.append({"type": "human", "content": m.content})
+            elif isinstance(m, AIMessage):
+                serialised.append({"type": "ai", "content": m.content})
+        with _db_conn() as conn:
+            conn.execute(
+                "INSERT OR REPLACE INTO chat_history (session_id, messages, updated_at) VALUES (?, ?, ?)",
+                (self.session_id, json.dumps(serialised, ensure_ascii=False),
+                 datetime.utcnow().isoformat()),
+            )
+
+    # ── override so every new message is immediately persisted ─
+    def add_message(self, message) -> None:
+        super().add_message(message)
+        self._save()
+
+
+# In-memory cache: avoids re-instantiating SQLiteChatHistory on every request
+_history_cache: dict[str, SQLiteChatHistory] = {}
+
+
+def get_session_history(session_id: str) -> SQLiteChatHistory:
+    if session_id not in _history_cache:
+        _history_cache[session_id] = SQLiteChatHistory(session_id)
+    return _history_cache[session_id]
+
+
+# ─────────────────────────────────────────────────────────────
+# FIX #5 — menu.txt: safe loading with fallback
+# ─────────────────────────────────────────────────────────────
+MENU_FALLBACK = (
+    "⚠️  قائمة الطعام غير متوفرة مؤقتاً. يرجى التواصل مع الكاشير مباشرة."
+)
+
 try:
-    with open(menu_path, "r", encoding="utf-8") as f:
-        menu_content = f.read()
+    with open("menu.txt", "r", encoding="utf-8") as _f:
+        menu_content = _f.read()
+    print("✅ menu.txt loaded successfully.")
 except FileNotFoundError:
-    # محاولة قراءته من المجلد الرئيسي إذا لم يكن في مجلد data
-    with open(os.path.join(BASE_DIR, "menu.txt"), "r", encoding="utf-8") as f:
-        menu_content = f.read()
+    menu_content = MENU_FALLBACK
+    print("❌ ERROR: menu.txt not found — using fallback menu text.")
+except Exception as _e:
+    menu_content = MENU_FALLBACK
+    print(f"❌ ERROR reading menu.txt: {_e} — using fallback menu text.")
 
-# تهيئة Gemini 2.5 Flash
+
+# ─────────────────────────────────────────────────────────────
+# LLM + CHAIN
+# ─────────────────────────────────────────────────────────────
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
     temperature=0.3,
 )
 
-prompt = ChatPromptTemplate.from_messages([
-    ("system", """أنت أبو علي — كاشير مطعم البركة في إسطنبول.
-مش روبوت، مش مساعد. إنسان بيحب زبائنه وبيعرفهم بالاسم.
-رقم الزبون مسجل تلقائياً: {sender} — لا تسأل عنه أبداً.
+SYSTEM_PROMPT = """You are the smart AI assistant for "Al-Baraka Restaurant" (مطعم البركة). Your job is to welcome customers, present the menu, take orders, ask for special notes, and confirm delivery details — all with professionalism and warmth.
 
-شخصيتك:
-حنين، خفيف الدم، دايماً مرحب. بتحكي مثل صاحب المطعم اللي عنده وقت لكل زبون بس ما بيطوّل. لهجتك فلسطينية شامية طبيعية: يا هلا، تكرم، من عيوني، يسلمو، يلا حبيبي.
+━━━━━━━━━━━━━━━━━━━━━━━━
+🌐 LANGUAGE DETECTION — CRITICAL RULE
+━━━━━━━━━━━━━━━━━━━━━━━━
+You MUST detect the customer's language from their VERY FIRST message and reply ONLY in that language throughout the entire conversation.
 
-أسلوب الرد [اجباري]:
-- سطر أو سطرين بالحد الأقصى. دايماً.
-- سؤال واحد بكل رسالة، مش أكثر.
-- بدون نقاط (*) أو تنسيق قوائم في الردود العادية.
-- تحدث بالعربية الشامية دائماً. (استثناء وحيد: إذا كتب الزبون رسالة كاملة واضحة بالإنجليزية أو التركية، جاوبه بلغته. لكن إذا قال فقط "hi" أو كلمة أجنبية واحدة، ابقَ على اللهجة الشامية).
+- If the customer writes in ARABIC → reply ONLY in Arabic (Palestinian/Levantine dialect, formal and polite)
+- If the customer writes in TURKISH → reply ONLY in Turkish (formal and polite)
+- If the customer writes in ENGLISH → reply ONLY in English (formal and polite)
 
-تدفق الطلب (خطوة بخطوة، كل خطوة برسالة لحالها):
-1. الأصناف — إذا ما حدد عدد، افترض (1) ولا تسأل.
-2. الموقع — للتوصيل. إذا حجز بالمطعم، تخطى هاد الخطوة.
-3. الاسم — اسأل مرة وحدة بس.
-4. الفاتورة — أرسلها بدفء، مثل: "يلا غالي، هاي حسابك..."
+NEVER mix languages. NEVER default to Arabic if the customer wrote in Turkish or English.
+If you cannot detect the language clearly, respond in all three languages briefly and ask which they prefer.
 
-مواقف خاصة:
-- طلب صنف ما عنا: "ما عنا [كذا] يا غالي، بس عنا [بديل]، شو بتفضل؟"
-- تناقض (حجز + لوكيشن): "وصل اللوكيشن، نعتمد توصيل ولا حجز بالمطعم؟"
-- سؤال غير متوقع أو غير واضح: اسأل توضيح بجملة واحدة فقط.
-- رسالة غير مفهومة أو صورة: "آسف ما وصلني شي واضح، شو بتحتاج؟"
+━━━━━━━━━━━━━━━━━━━━━━━━
+📋 ORDER FLOW (follow this exact sequence)
+━━━━━━━━━━━━━━━━━━━━━━━━
+Step 1 → Greet the customer warmly
+Step 2 → Take their order (items from the menu only)
+Step 3 → Ask: "Do you have any special notes or requests for your order?" (in their language)
+         - Accept reasonable notes (no onions, extra sauce, allergy requests, etc.)
+         - Politely decline unreasonable notes (requests unrelated to food, offensive requests, impossible demands) with a brief, kind explanation
+Step 4 → Ask for their delivery location (WhatsApp location pin or address)
+Step 5 → Ask for their name
+Step 6 → Show the full invoice (items + prices + delivery fee + total)
+Step 7 → Ask for "تأكيد" / "confirm" / "onayla" to finalize
 
-عند تأكيد الطلب (بأي كلمة: تمام، اعتمد، يلا، ✓):
-أرسل رسالة ختامية دافئة (جملة وحدة) ثم مباشرةً هاد الفورمات:
+━━━━━━━━━━━━━━━━━━━━━━━━
+🗣️ TONE & VOCABULARY
+━━━━━━━━━━━━━━━━━━━━━━━━
+Arabic: Use warm, formal Palestinian/Levantine expressions.
+  ✅ Allowed: أهلاً وسهلاً، تفضل، شرفتنا، بكل سرور، تكرم، جاهزين لخدمتك
+  ❌ Forbidden: يابا، على راسي، يا غالي، حبيب قلبي، معلم (too informal/excessive)
+  ❌ Forbidden: dry formal Arabic (الفصحى الجافة)
+  Always speak as "نحن" (we)
+
+Turkish: Formal, polite. E.g. "Buyurun", "Memnuniyetle", "Teşekkür ederiz"
+English: Formal, polite. E.g. "Welcome!", "Of course", "We'd be happy to help"
+
+━━━━━━━━━━━━━━━━━━━━━━━━
+🧾 FINAL CONFIRMATION FORMAT
+━━━━━━━━━━━━━━━━━━━━━━━━
+When the customer confirms, include this block verbatim at the END of your message:
 
 [FINAL_CONFIRMATION]
-الاسم: ...
-الرقم: {sender}
-النوع: توصيل / حجز
-الأصناف: ...
-الموقع: ...
-توصيل: ...
-المجموع: ... ليرة تركية.
+الاسم: (customer name)
+الرقم: [تعديل: اترك هذا الحقل فارغاً، النظام سيتكفل بوضعه بناءً على رقم المرسل]
+النوع: (توصيل / حجز)
+الأصناف: (items and prices)
+الملاحظات: (special notes, or "لا يوجد")
+الموقع: (maps link)
+توصيل: (fee)
+المجموع: (total) ليرة تركية.
 
-روابط المنيو (عند الطلب فقط):
-العربية: https://baraka-restoran.com/ar/?branch=baraka-restoran
-الإنجليزية: https://baraka-restoran.com/en/?branch=baraka-restoran
-التركية: https://baraka-restoran.com/tr/?branch=baraka-restoran
+━━━━━━━━━━━━━━━━━━━━━━━━
+📌 OTHER RULES & GUARDRAILS (تم إضافة حواجز الحماية هنا)
+━━━━━━━━━━━━━━━━━━━━━━━━
+- Only take orders from the menu. If an item is not on the menu, apologize and suggest the closest alternative.
+- For out-of-range delivery, escalate to human cashier smoothly.
+- Never break character or mention that you are an AI.
 
-المنيو: {context}"""),
+[إضافة: منع الخروج عن النص وإجابة الأسئلة العامة]
+- ROLE BOUNDARIES: You are strictly a restaurant assistant. NEVER answer questions unrelated to the restaurant, food, menu, or delivery. If asked to write code, solve math, or discuss general topics, politely decline and redirect the conversation back to the menu.
+
+[إضافة: منع اختراع الأسعار أو إعطاء خصومات وهمية]
+- STRICT PRICING: NEVER invent items, guess prices, or offer unauthorized discounts. You must ONLY use the exact items and prices provided in the MENU.
+
+[إضافة: التعامل مع تغيير الزبون لرأيه]
+- ORDER MODIFICATIONS: If the customer changes their mind (adds/removes items), ALWAYS recalculate and confirm the new total before proceeding to checkout.
+
+MENU:
+{context}"""
+
+prompt = ChatPromptTemplate.from_messages([
+    ("system", SYSTEM_PROMPT),
     MessagesPlaceholder(variable_name="history"),
     ("human", "{question}"),
 ])
 
 rag_chain = (
-    RunnablePassthrough.assign(
-        context=lambda x: menu_content,
-        sender=lambda x: x.get("sender", "")
-    )
+    RunnablePassthrough.assign(context=lambda x: menu_content)
     | prompt
     | llm
     | StrOutputParser()
 )
 
-store = {}
-
-def get_session_history(session_id: str):
-    if session_id not in store: store[session_id] = ChatMessageHistory()
-    return store[session_id]
-
 conversational_rag_chain = RunnableWithMessageHistory(
-    rag_chain, get_session_history, input_messages_key="question", history_messages_key="history"
+    rag_chain,
+    get_session_history,
+    input_messages_key="question",
+    history_messages_key="history",
 )
 
-def calculate_delivery_fee(user_lat, user_lon):
+
+# ─────────────────────────────────────────────────────────────
+# HELPERS
+# ─────────────────────────────────────────────────────────────
+def _digits_only(phone: str) -> str:
+    return re.sub(r"\D", "", phone or "")
+
+
+def is_cashier_sender(from_field: str) -> bool:
+    if not CASHIER_PHONE:
+        return False
+    return _digits_only(from_field) == _digits_only(CASHIER_PHONE)
+
+
+# FIX #4 — reuse the single global twilio_client
+def send_whatsapp_msg(to_phone: str, message: str) -> bool:
+    if not twilio_client:
+        print("⚠️  Twilio client not initialised — cannot send message.")
+        return False
+    try:
+        to_wa = to_phone if to_phone.startswith("whatsapp:") else f"whatsapp:{to_phone}"
+        twilio_client.messages.create(
+            body=message,
+            from_=TWILIO_WHATSAPP_FROM,
+            to=to_wa,
+        )
+        return True
+    except Exception as e:
+        print(f"❌ Twilio send error: {e}")
+        return False
+
+
+def calculate_delivery_fee(user_lat, user_lon) -> tuple[float, float]:
     r_lat, r_lon = 41.235278, 28.774333
     R = 6371.0
-    lat1, lon1, lat2, lon2 = map(math.radians, [r_lat, r_lon, float(user_lat), float(user_lon)])
-    dlon, dlat = lon2 - lon1, lat2 - lat1
-    a = math.sin(dlat/2)**2 + math.cos(lat1)*math.cos(lat2)*math.sin(dlon/2)**2
+    lat1, lon1, lat2, lon2 = map(
+        math.radians, [r_lat, r_lon, float(user_lat), float(user_lon)]
+    )
+    dlat, dlon = lat2 - lat1, lon2 - lon1
+    a = math.sin(dlat / 2) ** 2 + math.cos(lat1) * math.cos(lat2) * math.sin(dlon / 2) ** 2
     distance = R * 2 * math.asin(math.sqrt(a))
-    if distance > MAX_DELIVERY_KM: return round(distance, 2), -1
+    if distance > MAX_DELIVERY_KM:
+        return round(distance, 2), -1
     return round(distance, 2), round(distance * PRICE_PER_KM_TL, 2)
 
+
+# ─────────────────────────────────────────────────────────────
+# FIX #2 — Cashier command parser
+#
+# New format:  <action> <last4> [optional text]
+#   1 4567              → confirm order for customer ending in 4567
+#   2 4567 المطعم مزدحم → reject with reason
+#   3 4567 سيصل بعد 10د → send custom message
+#   list                → show all pending orders
+# ─────────────────────────────────────────────────────────────
+def parse_cashier_command(body: str) -> tuple[str | None, str | None, str]:
+    """
+    Returns (action, last4, extra_text).
+    action ∈ {'1','2','3','list'} or None if unrecognised.
+    last4  is the 4-digit customer identifier, or None if missing/invalid.
+    extra  is the trailing text (reason / message), may be empty string.
+    """
+    parts = body.strip().split(None, 2)   # at most 3 tokens
+    if not parts:
+        return None, None, ""
+
+    action = parts[0]
+
+    if action == "list":
+        return "list", None, ""
+
+    if action not in ("1", "2", "3"):
+        return None, None, ""
+
+    if len(parts) < 2:
+        return action, None, ""          # action recognised but last4 missing
+
+    last4 = parts[1]
+    if not last4.isdigit() or len(last4) != 4:
+        return action, None, ""          # last4 present but invalid format
+
+    extra = parts[2] if len(parts) > 2 else ""
+    return action, last4, extra
+
+
+CASHIER_HELP = (
+    "📋 أوامر الكاشير (مع آخر 4 أرقام من رقم الزبون):\n"
+    "1️⃣ XXXX — تأكيد الطلب\n"
+    "   مثال: 1 4567\n\n"
+    "2️⃣ XXXX السبب — رفض مع ذكر السبب\n"
+    "   مثال: 2 4567 المنسف خلص\n\n"
+    "3️⃣ XXXX الرسالة — إرسال رسالة مخصصة\n"
+    "   مثال: 3 4567 الطلب سيصل بعد 10 دقائق\n\n"
+    "list — عرض جميع الطلبات المعلقة"
+)
+
+
+# ─────────────────────────────────────────────────────────────
+# STARTUP
+# ─────────────────────────────────────────────────────────────
+@app.on_event("startup")
+async def startup_event():
+    init_db()
+    print("✅ SQLite database initialised.")
+
+
+# ─────────────────────────────────────────────────────────────
+# ROUTES
+# ─────────────────────────────────────────────────────────────
 @app.get("/")
 async def home():
-    return {"status": "Al-Baraka Smart System Online (FastAPI)"}
+    return {"status": "Al-Baraka Smart System Online (FastAPI v2 — Production)"}
+
 
 @app.post("/whatsapp")
-async def whatsapp_reply(request: Request, background_tasks: BackgroundTasks):
+async def whatsapp_reply(request: Request):
     form_data = await request.form()
-    body = form_data.get("Body", "").strip()
-    sender = form_data.get("From", "")
-    lat = form_data.get("Latitude")
-    lon = form_data.get("Longitude")
-
-    clean_sender = sender.replace("whatsapp:", "")
+    body      = form_data.get("Body", "").strip()
+    sender    = form_data.get("From", "")
+    lat       = form_data.get("Latitude")
+    lon       = form_data.get("Longitude")
 
     resp = MessagingResponse()
 
-    # --- 1. لوحة تحكم الكاشير ---
+    # ── 1. CASHIER DASHBOARD ─────────────────────────────────
     if is_cashier_sender(sender):
-        customer_id = await get_customer_mapping("current")
-        if not customer_id:
-            resp.message().body("لا توجد طلبات معلقة حالياً.")
+        action, last4, extra = parse_cashier_command(body)
+
+        # Show all pending orders
+        if action == "list":
+            pending = list_pending_orders()
+            if not pending:
+                resp.message().body("لا توجد طلبات معلقة حالياً.")
+            else:
+                lines = [f"🔔 الطلبات المعلقة ({len(pending)}):"]
+                for l4 in pending:
+                    lines.append(f"  • آخر 4 أرقام: {l4}")
+                lines.append("\nاستخدم الرقم للإجراء — مثال: 1 " + list(pending.keys())[0])
+                resp.message().body("\n".join(lines))
             return Response(content=str(resp), media_type="application/xml")
 
-        if body == "1":
-            send_whatsapp_msg(customer_id, "✅ تم تأكيد طلبكم من قبل المطعم.. جاري التحضير الآن! أهلاً وسهلاً فيك.")
-            await set_order_state(customer_id, 'confirmed')
-            await delete_customer_mapping("current")
-            resp.message().body("تم إرسال التأكيد للزبون.")
+        # Unrecognised command → show help
+        if action is None:
+            resp.message().body(CASHIER_HELP)
+            return Response(content=str(resp), media_type="application/xml")
 
-        elif body.startswith("2"):
-            reason = body[1:].strip() or "المطعم مزدحم حالياً"
-            send_whatsapp_msg(customer_id, f"❌ نعتذر منكم، تم رفض الطلب.\nالسبب: {reason}")
-            await set_order_state(customer_id, 'rejected')
-            await delete_customer_mapping("current")
-            resp.message().body(f"تم إبلاغ الزبون بالرفض لسبب: {reason}")
+        # Action recognised but last4 missing or malformed
+        if last4 is None:
+            resp.message().body(
+                "⚠️ يرجى إضافة آخر 4 أرقام من رقم الزبون بعد الأمر.\n"
+                f"مثال: {action} 4567\n\n"
+                "اكتب 'list' لعرض الطلبات المعلقة."
+            )
+            return Response(content=str(resp), media_type="application/xml")
 
-        elif body.startswith("3"):
-            custom_msg = body[1:].strip()
-            if custom_msg:
-                send_whatsapp_msg(customer_id, f"💬 رسالة من إدارة المطعم:\n{custom_msg}")
-                resp.message().body("تم إرسال رسالتك للزبون.")
+        # Resolve last4 → full customer phone
+        customer_id = get_pending_phone(last4)
+        if not customer_id:
+            resp.message().body(
+                f"⚠️ لم يُعثر على طلب معلق للرقم المنتهي بـ {last4}.\n"
+                "اكتب 'list' لعرض الطلبات المعلقة."
+            )
+            return Response(content=str(resp), media_type="application/xml")
+
+        # ── FIX #1: all actions now operate on the correct customer ──
+        if action == "1":
+            send_whatsapp_msg(
+                customer_id,
+                "✅ تم تأكيد طلبكم من قبل المطعم.. جاري التحضير الآن! أهلاً وسهلاً فيك.",
+            )
+            set_order_state(customer_id, "confirmed")
+            remove_pending_order(last4)
+            resp.message().body(f"✅ تم إرسال التأكيد للزبون ...{last4}")
+
+        elif action == "2":
+            reason = extra or "المطعم مزدحم حالياً"
+            send_whatsapp_msg(
+                customer_id,
+                f"❌ نعتذر منكم، تم رفض الطلب.\nالسبب: {reason}",
+            )
+            set_order_state(customer_id, "rejected")
+            remove_pending_order(last4)
+            resp.message().body(f"تم إبلاغ الزبون ...{last4} بالرفض.\nالسبب: {reason}")
+
+        elif action == "3":
+            if not extra:
+                resp.message().body(
+                    "يرجى كتابة الرسالة بعد رقم الزبون.\n"
+                    f"مثال: 3 {last4} الطلب سيصل بعد 10 دقائق"
+                )
             else:
-                resp.message().body("يرجى كتابة الرسالة بعد الرقم 3 (مثال: 3 الطلب سيصل بعد 10 دقائق)")
-
-        else:
-            resp.message().body("خيارات الكاشير:\n1. تأكيد\n2. رفض (اكتب 2 والسبب)\n3. رد (اكتب 3 والرسالة)")
+                send_whatsapp_msg(
+                    customer_id,
+                    f"💬 رسالة من إدارة المطعم:\n{extra}",
+                )
+                resp.message().body(f"تم إرسال رسالتك للزبون ...{last4}")
 
         return Response(content=str(resp), media_type="application/xml")
 
-    # --- 2. صمت البوت للزبون المنتظر ---
-    current_order_state = await get_order_state(sender)
-    if current_order_state == 'waiting_cashier':
-        background_tasks.add_task(send_with_human_delay, sender, "طلبكم قيد المراجعة لدى الإدارة.. بنخبركم فور التأكيد! بكل سرور.")
-        return Response(content="<Response></Response>", media_type="application/xml")
+    # ── 2. SILENCE BOT FOR WAITING CUSTOMER ─────────────────
+    if get_order_state(sender) == "waiting_cashier":
+        resp.message().body(
+            "طلبكم قيد المراجعة لدى الإدارة.. بنخبركم فور التأكيد! بكل سرور."
+        )
+        return Response(content=str(resp), media_type="application/xml")
 
-    # --- 3. منطق الموقع ---
+    # ── 3. LOCATION HANDLING ─────────────────────────────────
     if lat and lon:
         dist, fee = calculate_delivery_fee(lat, lon)
         google_link = f"http://maps.google.com/?q={lat},{lon}"
         if fee == -1:
-            body = f"[نظام: الموقع خارج التغطية {dist}كم]"
+            body = (
+                f"[SYSTEM: Customer location is out of delivery range — {dist}km away. "
+                "Please inform the customer politely and offer to escalate to the cashier.]"
+            )
         else:
-            body = f"[نظام: الموقع {google_link} | المسافة {dist}كم | التوصيل {fee} ليرة. اطلب اسم الزبون الآن]"
+            body = (
+                f"[SYSTEM: Customer location received — {google_link} | "
+                f"Distance: {dist}km | Delivery fee: {fee} TL. "
+                "Now ask for the customer's name.]"
+            )
 
-    # --- 4. استدعاء الذكاء الاصطناعي ---
+    # ── 4. CALL AI ───────────────────────────────────────────
     try:
         response_text = conversational_rag_chain.invoke(
-            {
-                "question": body,
-                "sender": clean_sender
-            },
-            config={"configurable": {"session_id": sender}}
+            {"question": body},
+            config={"configurable": {"session_id": sender}},
         )
     except Exception as e:
-        print(f"LLM Error: {e}")
-        response_text = "أهلاً وسهلاً فيك، نواجه ضغطاً بسيطاً في النظام، هل يمكنك إعادة إرسال الطلب لو سمحت؟"
-
-    # --- 5. كشف الفاتورة النهائية ---
-    if "[FINAL_CONFIRMATION]" in response_text:
-        summary = response_text.split("[FINAL_CONFIRMATION]")[1].strip()
-        summary = f"📱 رقم الواتساب: {clean_sender}\n" + summary
-
-        await set_customer_mapping("current", sender)
-        await set_order_state(sender, 'waiting_cashier')
-
-        response_text = response_text.split("[FINAL_CONFIRMATION]")[0].strip()
-        if not response_text:
-            response_text = "تكرم! تم إرسال الطلب للإدارة للمراجعة.. ثواني وبنأكدلكم."
-        else:
-            response_text += "\n\nتكرم! تم إرسال الطلب للإدارة للمراجعة.. ثواني وبنأكدلكم."
-
-        cashier_menu = (
-            f"🔔 طلب جديد:\n{summary}\n\n"
-            f"رد برقم الإجراء:\n"
-            f"1️⃣ لتأكيد الطلب\n"
-            f"2️⃣ للرفض (مثال: 2 المنسف خلص)\n"
-            f"3️⃣ للرد على الزبون (مثال: 3 رح نتأخر)"
+        print(f"❌ LLM Error: {e}")
+        response_text = (
+            "أهلاً وسهلاً فيك، نواجه ضغطاً بسيطاً في النظام، "
+            "هل يمكنك إعادة إرسال الطلب لو سمحت؟"
         )
-        send_whatsapp_msg(CASHIER_PHONE, cashier_menu)
 
-    # --- 6. الإرسال بتأخير بشري باستخدام BackgroundTasks ---
-    background_tasks.add_task(send_with_human_delay, sender, response_text)
+    # ── 5. DETECT FINAL CONFIRMATION ─────────────────────────
+    if "[FINAL_CONFIRMATION]" in response_text:
+        parts    = response_text.split("[FINAL_CONFIRMATION]", 1)
+        # FIX #6 — guard against empty pre-confirmation text
+        pre_text = parts[0].strip()
+        summary  = parts[1].strip() if len(parts) > 1 else ""
 
-    # رد صالح لـ Twilio لمنع الأخطاء
-    return Response(content="<Response></Response>", media_type="application/xml")
+        if pre_text:
+            response_text = pre_text + "\n\nتكرم! تم إرسال الطلب للإدارة للمراجعة.. ثواني وبنأكدلكم."
+        else:
+            response_text = "تكرم! تم إرسال طلبكم للإدارة للمراجعة.. ثواني وبنأكدلكم."
 
+        # FIX #1 — store by last4, not by overwriting a single "current" key
+        last4 = add_pending_order(sender)
+        set_order_state(sender, "waiting_cashier")
+
+        # FIX #2 — cashier message now shows last4 so cashier knows which customer
+        cashier_msg = (
+            f"🔔 طلب جديد — آخر 4 أرقام: *{last4}*\n"
+            f"{'─'*30}\n"
+            f"{summary}\n"
+            f"{'─'*30}\n"
+            f"للرد استخدم آخر 4 الأرقام ({last4}):\n"
+            f"1️⃣ {last4} — تأكيد الطلب\n"
+            f"2️⃣ {last4} السبب — رفض مع سبب\n"
+            f"3️⃣ {last4} الرسالة — رد مخصص\n"
+            f"list — عرض كل الطلبات المعلقة"
+        )
+        send_whatsapp_msg(CASHIER_PHONE, cashier_msg)
+
+    resp.message().body(response_text)
+    return Response(content=str(resp), media_type="application/xml")
+
+
+# ─────────────────────────────────────────────────────────────
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run("rag_bot:app", host="0.0.0.0", port=10000, reload=True)
