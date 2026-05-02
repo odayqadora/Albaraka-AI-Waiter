@@ -140,10 +140,11 @@ class SQLiteChatHistory(ChatMessageHistory):
     ChatMessageHistory backed by SQLite.
     Loads existing messages on construction; persists on every add_message call.
     """
+    # الحل هنا: التصريح عن المتغير ليقبله نظام Pydantic
+    session_id: str
 
-    def __init__(self, session_id: str):
-        super().__init__()
-        self.session_id = session_id
+    def __init__(self, session_id: str, **kwargs):
+        super().__init__(session_id=session_id, **kwargs)
         self._load()
 
     # ── private ──────────────────────────────────────────────
@@ -286,7 +287,7 @@ When the customer confirms, include this block verbatim at the END of your messa
 - ROLE BOUNDARIES: You are strictly a restaurant assistant. NEVER answer questions unrelated to the restaurant, food, menu, or delivery. If asked to write code, solve math, or discuss general topics, politely decline and redirect the conversation back to the menu.
 
 [إضافة: منع اختراع الأسعار أو إعطاء خصومات وهمية]
-- STRICT PRICING: NEVER invent items, guess prices, or offer unauthorized discounts. You must ONLY use the exact items and prices provided in the MENU.
+- STRICT PRICING: NEVER invent items, guess prices, or offer unauthorized discounts. You must ONLY use the exact items and prices provided in the menu.
 
 [إضافة: التعامل مع تغيير الزبون لرأيه]
 - ORDER MODIFICATIONS: If the customer changes their mind (adds/removes items), ALWAYS recalculate and confirm the new total before proceeding to checkout.
