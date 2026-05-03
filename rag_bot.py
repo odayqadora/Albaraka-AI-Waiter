@@ -77,6 +77,30 @@ app = FastAPI(
     version="1.0.0",
 )
 
+@app.on_event("startup")
+async def startup_event():
+    if not DATABASE_URL:
+        print("Warning: DATABASE_URL not set!")
+        return
+    
+    print("⏳ جاري فحص وإنشاء جداول قاعدة البيانات...")
+    try:
+        conn = await asyncpg.connect(DATABASE_URL)
+        await conn.execute('''
+            CREATE TABLE IF NOT EXISTS order_states (
+                customer_id TEXT PRIMARY KEY,
+                state TEXT
+            );
+            CREATE TABLE IF NOT EXISTS customer_mapping (
+                key TEXT PRIMARY KEY,
+                customer_id TEXT
+            );
+        ''')
+        print("✅ تم تجهيز جداول قاعدة البيانات بنجاح.")
+        await conn.close()
+    except Exception as e:
+        print(f"❌ خطأ في إعداد قاعدة البيانات: {e}")
+
 # الإعدادات
 CASHIER_PHONE = os.environ.get("CASHIER_PHONE")
 TWILIO_WHATSAPP_FROM = os.environ.get("TWILIO_WHATSAPP_FROM")
