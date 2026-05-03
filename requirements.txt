@@ -10,3 +10,4 @@ google-generativeai
 requests
 asyncpg==0.29.0
 python-dotenv
+redis
