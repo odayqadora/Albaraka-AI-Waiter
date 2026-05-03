@@ -5,6 +5,7 @@ import time
 import random
 import asyncio
 import asyncpg  # تم الاستبدال بـ asyncpg
+from langchain_community.chat_message_histories import RedisChatMessageHistory
 from fastapi import FastAPI, Request, Response, BackgroundTasks
 from twilio.rest import Client
 from twilio.twiml.messaging_response import MessagingResponse
@@ -195,11 +196,15 @@ rag_chain = (
     | StrOutputParser()
 )
 
-store = {}
+# جلب رابط رديس من متغيرات البيئة
+REDIS_URL = os.environ.get("REDIS_URL", "redis://localhost:6379")
 
 def get_session_history(session_id: str):
-    if session_id not in store: store[session_id] = ChatMessageHistory()
-    return store[session_id]
+    # ربط محادثة كل زبون (رقم الواتساب) بقاعدة بيانات رديس الخارجية
+    return RedisChatMessageHistory(
+        session_id=session_id,
+        url=REDIS_URL
+    )
 
 conversational_rag_chain = RunnableWithMessageHistory(
     rag_chain, get_session_history, input_messages_key="question", history_messages_key="history"
