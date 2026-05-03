@@ -127,21 +127,8 @@ def send_whatsapp_msg(to_phone, message):
         print(f"❌ Error: {e}")
         return False
 
-# تم تحويل الدالة إلى async واستخدام asyncio.sleep بدلاً من time.sleep
 async def send_with_human_delay(to_phone: str, message: str):
-    """محاكاة السلوك البشري — تأخير عشوائي قبل الرد"""
-    # تأخير أولي (وكأنه شاف الرسالة وبدأ يفكر)
-    thinking_delay = random.uniform(1.5, 4.0)
-    await asyncio.sleep(thinking_delay)
-
-    # تأخير الكتابة بناءً على طول الرسالة
-    words = len(message.split())
-    typing_speed_wpm = random.uniform(35, 55)
-    typing_delay = (words / typing_speed_wpm) * 60
-    typing_delay = max(2.0, min(typing_delay, 9.0))
-    await asyncio.sleep(typing_delay)
-
-    # إرسال الرسالة
+    """إرسال فوري بدون أي تأخير زمني"""
     send_whatsapp_msg(to_phone, message)
 
 # قراءة المنيو (تأكد من وجود الملف في المسار الصحيح بناءً على هيكل مشروعك)
