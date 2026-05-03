@@ -159,7 +159,7 @@ except FileNotFoundError:
 # تهيئة Gemini 2.5 Flash
 llm = ChatGoogleGenerativeAI(
     model="gemini-2.5-flash",
-    temperature=0.3,
+    temperature=0.1,
 )
 
 prompt = ChatPromptTemplate.from_messages([
